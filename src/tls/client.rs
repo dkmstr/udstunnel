@@ -1,5 +1,4 @@
 use tokio::{io, net::TcpStream};
-use async_trait::async_trait;
 
 use std::fmt;
 use std::sync::Arc;
@@ -15,18 +14,15 @@ use tokio_rustls::{
     TlsConnector,
 };
 
+use super::callbacks::TLSConnectCallback;
 use super::noverify::NoVerifySsl;
 
-#[async_trait]
-pub trait TLSPreOperation: Send + Sync {
-    async fn pre_tls(&self, stream: &mut TcpStream) -> io::Result<()>;
-}
-
-pub struct ConnectionBuilder{
+pub struct ConnectionBuilder {
     server: String,
     port: u16,
     verify: bool,
-    precondition: Option<Box<dyn TLSPreOperation>>,
+    connect_callback: Option<Box<dyn TLSConnectCallback>>,
+    certificate_path: Option<String>,
 }
 
 impl fmt::Debug for ConnectionBuilder {
@@ -45,7 +41,8 @@ impl ConnectionBuilder {
             server: String::from(server),
             port,
             verify: true,
-            precondition: None,
+            connect_callback: None,
+            certificate_path: None,
         }
     }
 
@@ -54,19 +51,28 @@ impl ConnectionBuilder {
         self
     }
 
-    pub fn with_pretls<T: TLSPreOperation + 'static>(mut self, precondition: T) -> Self {
-        self.precondition = Some(Box::new(precondition));
+    pub fn with_connect_callback<T: TLSConnectCallback + 'static>(mut self, callback: T) -> Self {
+        self.connect_callback = Some(Box::new(callback));
+        self
+    }
+
+    pub fn with_certificate_path(mut self, path: &str) -> Self {
+        self.certificate_path = Some(String::from(path));
         self
     }
 
     pub async fn connect(self) -> io::Result<TlsStream<TcpStream>> {
         debug!("Connecting to {}:{}", self.server, self.port);
         // Load RootCertStore from /etc/ssl/certs/ca-certificates.crt
-        let certs: Vec<CertificateDer> =
-            CertificateDer::pem_file_iter("/etc/ssl/certs/ca-certificates.crt")
-                .unwrap()
-                .map(|cert| cert.unwrap())
-                .collect();
+        let cert_path = self
+            .certificate_path
+            .unwrap_or("/etc/ssl/certs/ca-certificates.crt".to_string());
+        debug!("Loading certificates from: {}", cert_path);
+
+        let certs: Vec<CertificateDer> = CertificateDer::pem_file_iter(cert_path)
+            .unwrap()
+            .map(|cert| cert.unwrap())
+            .collect();
 
         let mut root_store = RootCertStore::empty();
         root_store.add_parsable_certificates(certs);
@@ -87,8 +93,8 @@ impl ConnectionBuilder {
             .await
             .unwrap();
 
-        if let Some(precondition) = self.precondition {
-            precondition.pre_tls(&mut stream).await?;
+        if let Some(connect_callback) = self.connect_callback {
+            connect_callback.process(&mut stream).await?;
         }
 
         let tls_stream: tokio_rustls::client::TlsStream<TcpStream> =
