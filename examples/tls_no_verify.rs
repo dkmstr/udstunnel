@@ -1,5 +1,7 @@
+use async_trait::async_trait;
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
+    net::TcpStream
 };
 
 use std::cmp::min;
@@ -7,16 +9,24 @@ use std::cmp::min;
 use env_logger::Env;
 use log::debug;
 
-use iotest::tls::connect::ConnectionBuilder;
+use iotest::tls::connect::{ConnectionBuilder, TLSPreOperation};
+
+struct PreOperationTLS {}
+
+#[async_trait]
+impl TLSPreOperation for PreOperationTLS {
+    async fn pre_tls(&self, stream: &mut TcpStream) -> io::Result<()> {
+        debug!("Preconnection for connection established: {:?}", stream);
+        Ok(())
+    }
+}
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
 
     let mut tls_stream = ConnectionBuilder::new("db.dkmon.com", 443)
-        .with_callback(async {
-            debug!("Connection established. Doing SSL");
-        })
+        .with_pretls(PreOperationTLS {})
         .with_verify(false)
         .connect()
         .await

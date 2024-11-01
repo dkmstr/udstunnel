@@ -1,7 +1,8 @@
 use tokio::{io, net::TcpStream};
+use async_trait::async_trait;
 
-use std::{future::Future, sync::Arc};
 use std::fmt;
+use std::sync::Arc;
 
 use log::debug;
 
@@ -16,17 +17,19 @@ use tokio_rustls::{
 
 use super::noverify::NoVerifySsl;
 
-// Type to represent a callback to be invoked
-// when the connection is established but the tls is not yet negotiated.
+#[async_trait]
+pub trait TLSPreOperation: Send + Sync {
+    async fn pre_tls(&self, stream: &mut TcpStream) -> io::Result<()>;
+}
 
-pub struct ConnectionBuilder<F> where F: Future + Send + 'static {
+pub struct ConnectionBuilder{
     server: String,
     port: u16,
     verify: bool,
-    callback: Option<F>,
+    precondition: Option<Box<dyn TLSPreOperation>>,
 }
 
-impl<F> fmt::Debug for ConnectionBuilder<F> where F: Future + Send + 'static {
+impl fmt::Debug for ConnectionBuilder {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ConnectionBuilder")
             .field("server", &self.server)
@@ -36,13 +39,13 @@ impl<F> fmt::Debug for ConnectionBuilder<F> where F: Future + Send + 'static {
     }
 }
 
-impl<F> ConnectionBuilder<F> where F: Future + Send + 'static {
+impl ConnectionBuilder {
     pub fn new(server: &str, port: u16) -> Self {
         ConnectionBuilder {
             server: String::from(server),
             port,
             verify: true,
-            callback: None,
+            precondition: None,
         }
     }
 
@@ -51,8 +54,8 @@ impl<F> ConnectionBuilder<F> where F: Future + Send + 'static {
         self
     }
 
-    pub fn with_callback(mut self, callback: F) -> Self {
-        self.callback = Some(callback);
+    pub fn with_pretls<T: TLSPreOperation + 'static>(mut self, precondition: T) -> Self {
+        self.precondition = Some(Box::new(precondition));
         self
     }
 
@@ -80,13 +83,14 @@ impl<F> ConnectionBuilder<F> where F: Future + Send + 'static {
 
         let connector = TlsConnector::from(Arc::new(config));
         let server_name = self.server.clone().try_into().unwrap();
-        let stream = TcpStream::connect(format!("{}:{}", self.server, self.port))
+        let mut stream = TcpStream::connect(format!("{}:{}", self.server, self.port))
             .await
             .unwrap();
-        // Invoke the callback if it is set.
-        if let Some(callback) = self.callback {
-            callback.await;
+
+        if let Some(precondition) = self.precondition {
+            precondition.pre_tls(&mut stream).await?;
         }
+
         let tls_stream: tokio_rustls::client::TlsStream<TcpStream> =
             connector.connect(server_name, stream).await.unwrap();
 
