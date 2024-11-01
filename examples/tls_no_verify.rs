@@ -14,6 +14,9 @@ async fn main() -> io::Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
 
     let mut tls_stream = ConnectionBuilder::new("db.dkmon.com", 443)
+        .with_callback(async {
+            debug!("Connection established. Doing SSL");
+        })
         .with_verify(false)
         .connect()
         .await

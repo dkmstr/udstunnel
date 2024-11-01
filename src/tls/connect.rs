@@ -1,6 +1,6 @@
 use tokio::{io, net::TcpStream};
 
-use std::sync::Arc;
+use std::{future::Future, sync::Arc};
 use std::fmt;
 
 use log::debug;
@@ -18,16 +18,15 @@ use super::noverify::NoVerifySsl;
 
 // Type to represent a callback to be invoked
 // when the connection is established but the tls is not yet negotiated.
-pub type ConnectionCallback = Box<dyn FnOnce(&TcpStream) -> io::Result<()> + Send>;
 
-pub struct ConnectionBuilder {
+pub struct ConnectionBuilder<F> where F: Future + Send + 'static {
     server: String,
     port: u16,
     verify: bool,
-    callback: Option<ConnectionCallback>,
+    callback: Option<F>,
 }
 
-impl fmt::Debug for ConnectionBuilder {
+impl<F> fmt::Debug for ConnectionBuilder<F> where F: Future + Send + 'static {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ConnectionBuilder")
             .field("server", &self.server)
@@ -37,7 +36,7 @@ impl fmt::Debug for ConnectionBuilder {
     }
 }
 
-impl ConnectionBuilder {
+impl<F> ConnectionBuilder<F> where F: Future + Send + 'static {
     pub fn new(server: &str, port: u16) -> Self {
         ConnectionBuilder {
             server: String::from(server),
@@ -52,7 +51,7 @@ impl ConnectionBuilder {
         self
     }
 
-    pub fn with_callback(mut self, callback: ConnectionCallback) -> Self {
+    pub fn with_callback(mut self, callback: F) -> Self {
         self.callback = Some(callback);
         self
     }
@@ -86,7 +85,7 @@ impl ConnectionBuilder {
             .unwrap();
         // Invoke the callback if it is set.
         if let Some(callback) = self.callback {
-            callback(&stream)?;
+            callback.await;
         }
         let tls_stream: tokio_rustls::client::TlsStream<TcpStream> =
             connector.connect(server_name, stream).await.unwrap();
