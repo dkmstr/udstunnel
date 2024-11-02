@@ -27,7 +27,7 @@ async fn main() -> io::Result<()> {
 
     let mut tls_stream = ConnectionBuilder::new("db.dkmon.com", 443)
         .with_connect_callback(TLSConnectHook {})
-        .with_verify(false)
+        .with_verify_ssl(false)
         .connect()
         .await
         .unwrap();

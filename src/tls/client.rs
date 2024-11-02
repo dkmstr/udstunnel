@@ -46,7 +46,7 @@ impl ConnectionBuilder {
         }
     }
 
-    pub fn with_verify(mut self, verify: bool) -> Self {
+    pub fn with_verify_ssl(mut self, verify: bool) -> Self {
         self.verify = verify;
         self
     }
