@@ -14,14 +14,14 @@ use tokio_rustls::{
     TlsConnector,
 };
 
-use super::callbacks::TLSConnectCallback;
+use super::callbacks::TLSClientCallback;
 use super::noverify::NoVerifySsl;
 
 pub struct ConnectionBuilder {
     server: String,
     port: u16,
     verify: bool,
-    connect_callback: Option<Box<dyn TLSConnectCallback>>,
+    connect_callback: Option<Box<dyn TLSClientCallback>>,
     certificate_path: Option<String>,
 }
 
@@ -51,7 +51,7 @@ impl ConnectionBuilder {
         self
     }
 
-    pub fn with_connect_callback<T: TLSConnectCallback + 'static>(mut self, callback: T) -> Self {
+    pub fn with_connect_callback<T: TLSClientCallback + 'static>(mut self, callback: T) -> Self {
         self.connect_callback = Some(Box::new(callback));
         self
     }

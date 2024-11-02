@@ -9,7 +9,10 @@ use std::cmp::min;
 use env_logger::Env;
 use log::debug;
 
-use udstunnel::tls::{client::ConnectionBuilder, callbacks::TLSClientCallback};
+use udstunnel::{
+    tls::{callbacks::TLSClientCallback, client::ConnectionBuilder},
+    tunnel::consts,
+};
 
 struct TLSConnectHook {}
 
@@ -17,6 +20,8 @@ struct TLSConnectHook {}
 impl TLSClientCallback for TLSConnectHook {
     async fn process(&self, stream: &mut TcpStream) -> io::Result<()> {
         debug!("Hook for connection established: {:?}", stream);
+        stream.write_all(consts::HANDSHAKE_V1).await?;
+
         Ok(())
     }
 }
@@ -25,7 +30,7 @@ impl TLSClientCallback for TLSConnectHook {
 async fn main() -> io::Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
 
-    let mut tls_stream = ConnectionBuilder::new("db.dkmon.com", 443)
+    let mut tls_stream = ConnectionBuilder::new("127.0.0.1", 4443)
         .with_connect_callback(TLSConnectHook {})
         .with_verify(false)
         .connect()
