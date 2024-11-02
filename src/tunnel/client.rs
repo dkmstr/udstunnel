@@ -6,8 +6,6 @@ use tokio::{
 
 use tokio_rustls::client::TlsStream;
 
-
-use env_logger::Env;
 use log::debug;
 
 use crate::{
@@ -29,13 +27,14 @@ impl TLSClientCallback for UDSClientConnectionCB {
     }
 }
 
-pub async fn connect(tunnel_server: &str, port: u16, verify_ssl: bool) -> io::Result<TlsStream<TcpStream>> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
-
+pub async fn connect(
+    tunnel_server: &str,
+    port: u16,
+    verify_ssl: bool,
+) -> io::Result<TlsStream<TcpStream>> {
     return ConnectionBuilder::new(tunnel_server, port)
         .with_connect_callback(UDSClientConnectionCB {})
         .with_verify_ssl(verify_ssl)
         .connect()
         .await;
-
 }
