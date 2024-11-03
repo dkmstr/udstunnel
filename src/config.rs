@@ -54,9 +54,8 @@ pub struct Config {
     pub ssl_min_tls_version: String,  // Valid values are 1.2, 1.3 (1.0 and 1.1 are not supported)
     pub ssl_certificate: String,
     pub ssl_certificate_key: String,
-    pub ssl_password: String,
+    //pub ssl_password: String,  // Maybe supported in the future
     pub ssl_ciphers: String,
-    pub ssl_dhparam: String,
 
     pub uds_server: String,
     pub uds_token: String,
@@ -144,9 +143,8 @@ impl ConfigLoader {
             .set_default("ssl_min_tls_version", "1.2")?
             .set_default("ssl_certificate", "/etc/certs/server.pem")?
             .set_default("ssl_certificate_key", "/etc/certs/key.pem")?
-            .set_default("ssl_password", "")?
+            //.set_default("ssl_password", "")?
             .set_default("ssl_ciphers", "")?
-            .set_default("ssl_dhparam", "")?
             .set_default(
                 "uds_server",
                 if let Some(uds_server) = self.uds_server.clone() {
@@ -218,9 +216,8 @@ impl ConfigLoader {
             ssl_min_tls_version: cfg_reader.get("ssl_min_tls_version")?,
             ssl_certificate: cfg_reader.get("ssl_certificate")?,
             ssl_certificate_key: cfg_reader.get("ssl_certificate_key")?,
-            ssl_password: cfg_reader.get("ssl_password")?,
+            //ssl_password: cfg_reader.get("ssl_password")?,
             ssl_ciphers: cfg_reader.get("ssl_ciphers")?,
-            ssl_dhparam: cfg_reader.get("ssl_dhparam")?,
             uds_server: cfg_reader.get("uds_server")?,
             uds_token: cfg_reader.get("uds_token")?,
             uds_timeout: cfg_reader.get("uds_timeout")?,

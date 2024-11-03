@@ -9,8 +9,8 @@ use tokio_rustls::{
     TlsAcceptor,
 };
 
-const CERT_BYTES: &[u8] = include_bytes!("../tests/cert.pem");
-const KEY_BYTES: &[u8] = include_bytes!("../tests/key.pem");
+const CERT_BYTES: &[u8] = include_bytes!("../tests/certs/cert.pem");
+const KEY_BYTES: &[u8] = include_bytes!("../tests/certs/key.pem");
 
 
 #[tokio::main]

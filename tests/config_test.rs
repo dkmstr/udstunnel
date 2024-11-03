@@ -25,9 +25,8 @@ mod tests {
         assert_eq!(config.ssl_min_tls_version, "1.2");
         assert_eq!(config.ssl_certificate, "/etc/certs/server.pem");
         assert_eq!(config.ssl_certificate_key, "/etc/certs/key.pem");
-        assert_eq!(config.ssl_password, "");
+        //assert_eq!(config.ssl_password, "");
         assert_eq!(config.ssl_ciphers, "");
-        assert_eq!(config.ssl_dhparam, "");
         assert_eq!(config.uds_server, "");
         assert_eq!(config.uds_token, "");
         assert_eq!(config.uds_timeout, 10.0);
@@ -54,14 +53,13 @@ mod tests {
         assert_eq!(config.ipv6, true);
         assert_eq!(config.workers > 0, true);
         assert_eq!(config.ssl_min_tls_version, "1.3");
-        assert_eq!(config.ssl_certificate, "/tmp/server.pem");
-        assert_eq!(config.ssl_certificate_key, "/tmp/key.pem");
-        assert_eq!(config.ssl_password, "MyPassword");
+        assert_eq!(config.ssl_certificate, "tests/certs/server.pem");
+        assert_eq!(config.ssl_certificate_key, "tests/certs/key.pem");
+        //assert_eq!(config.ssl_password, "MyPassword");
         assert_eq!(
             config.ssl_ciphers,
             "ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512"
         );
-        assert_eq!(config.ssl_dhparam, "/tmp/dhparam.pem");
         assert_eq!(config.uds_server, "https://127.0.0.1:8000/uds/rest/tunnel/ticket");
         assert_eq!(config.uds_token, "uds_token");
         assert_eq!(config.uds_timeout, 16.0);
