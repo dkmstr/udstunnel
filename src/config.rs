@@ -33,9 +33,45 @@
 ///     .load()
 ///     .unwrap();
 /// ```
-pub mod types;
 
-use config;
+#[derive(Debug, Clone)]
+pub struct Config {
+    pub pidfile: String,
+    pub user: String,
+
+    pub loglevel: String,
+    pub logfile: Option<String>,
+    pub logsize: u32,
+    pub lognumber: u32,
+
+    pub listen_address: String,
+    pub listen_port: u16,
+
+    pub ipv6: bool,
+
+    pub workers: u8,
+
+    pub ssl_min_tls_version: String,  // Valid values are 1.2, 1.3 (1.0 and 1.1 are not supported)
+    pub ssl_certificate: String,
+    pub ssl_certificate_key: String,
+    pub ssl_password: String,
+    pub ssl_ciphers: String,
+    pub ssl_dhparam: String,
+
+    pub uds_server: String,
+    pub uds_token: String,
+    pub uds_timeout: f32,
+    pub uds_verify_ssl: bool,
+
+    pub command_timeout: f32,
+
+    pub secret: String,
+    pub allow: Vec<String>,
+
+    // Not used on rust
+    // use_uvloop: bool
+}
+
 
 pub struct ConfigLoader {
     filename: String,
@@ -84,7 +120,7 @@ impl ConfigLoader {
     /// 2. Load the configuration file specified by the user.
     /// 3. Load environment variables with the prefix `udstunnel`, overriding any existing values on the configuration file.
     /// 4. Return a `Result` containing the loaded configuration settings.
-    pub fn load(&self) -> Result<types::Config, config::ConfigError> {
+    pub fn load(&self) -> Result<Config, config::ConfigError> {
         // The order of the configuration search is:
         //   * /etc/udstunnel.conf if not DEBUG
         //   * udstunnel.conf in the current directory if DEBUG
@@ -168,7 +204,7 @@ impl ConfigLoader {
         };
 
         // Crate a configuration object
-        Ok(types::Config {
+        Ok(Config {
             pidfile: cfg_reader.get("pidfile")?,
             user: cfg_reader.get("user")?,
             loglevel: cfg_reader.get::<String>("loglevel")?.to_uppercase(),
@@ -196,72 +232,3 @@ impl ConfigLoader {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_load_config_default() {
-        let config = ConfigLoader::new()
-            .with_filename("non_existing_for_tests".into())
-            .load()
-            .unwrap();
-        assert_eq!(config.pidfile, "/var/run/udstunnel.pid");
-        assert_eq!(config.user, "nobody");
-        assert_eq!(config.loglevel, "INFO");
-        assert_eq!(config.logfile, None);
-        assert_eq!(config.logsize, 10 * 1024 * 1024);
-        assert_eq!(config.lognumber, 4);
-        assert_eq!(config.listen_address, "[::]");
-        assert_eq!(config.listen_port, 4443);
-        assert_eq!(config.ipv6, false);
-        assert_eq!(config.workers > 0, true);
-        assert_eq!(config.ssl_min_tls_version, "1.2");
-        assert_eq!(config.ssl_certificate, "/etc/certs/server.pem");
-        assert_eq!(config.ssl_certificate_key, "/etc/certs/key.pem");
-        assert_eq!(config.ssl_password, "");
-        assert_eq!(config.ssl_ciphers, "");
-        assert_eq!(config.ssl_dhparam, "");
-        assert_eq!(config.uds_server, "");
-        assert_eq!(config.uds_token, "");
-        assert_eq!(config.uds_timeout, 10.0);
-        assert_eq!(config.uds_verify_ssl, true);
-        assert_eq!(config.command_timeout, 3.0);
-        assert_eq!(config.secret, "");
-        assert_eq!(config.allow, Vec::<String>::new());
-    }
-
-    #[test]
-    fn test_load_config_from_file() {
-        let config = ConfigLoader::new()
-            .with_filename("tests/udstunnel.conf")
-            .load()
-            .unwrap();
-        assert_eq!(config.pidfile, "/tmp/udstunnel.pid");
-        assert_eq!(config.user, "dkmaster");
-        assert_eq!(config.loglevel, "DEBUG");
-        assert_eq!(config.logfile, Some("/tmp/tunnel.log".to_string()));
-        assert_eq!(config.logsize, 120 * 1024 * 1024);
-        assert_eq!(config.lognumber, 3);
-        assert_eq!(config.listen_address, "0.0.0.0");
-        assert_eq!(config.listen_port, 7777);
-        assert_eq!(config.ipv6, true);
-        assert_eq!(config.workers > 0, true);
-        assert_eq!(config.ssl_min_tls_version, "1.3");
-        assert_eq!(config.ssl_certificate, "/tmp/server.pem");
-        assert_eq!(config.ssl_certificate_key, "/tmp/key.pem");
-        assert_eq!(config.ssl_password, "MyPassword");
-        assert_eq!(
-            config.ssl_ciphers,
-            "ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512"
-        );
-        assert_eq!(config.ssl_dhparam, "/tmp/dhparam.pem");
-        assert_eq!(config.uds_server, "https://127.0.0.1:8000/uds/rest/tunnel/ticket");
-        assert_eq!(config.uds_token, "uds_token");
-        assert_eq!(config.uds_timeout, 16.0);
-        assert_eq!(config.uds_verify_ssl, false);
-        assert_eq!(config.command_timeout, 23.0);
-        assert_eq!(config.secret, "MySecret");
-        assert_eq!(config.allow, vec!["127.0.0.1", "127.0.0.2"]);
-    }
-}

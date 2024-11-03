@@ -9,15 +9,22 @@ use env_logger::Env;
 
 //#[cfg_attr(test, automock)]
 
-
-use udstunnel::tunnel::{server::launch, client::connect};
+use udstunnel::{
+    config,
+    tunnel::{client::connect, server::launch},
+};
 
 #[tokio::test]
 async fn test_launch() {
     env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
 
+    let config = config::ConfigLoader::new()
+        .with_filename("tests/udstunnel.conf")
+        .load()
+        .unwrap();
+
     let server = tokio::spawn(async {
-        let result = launch().await;
+        let result = launch(config).await;
         assert!(result.is_ok());
     });
 
@@ -34,5 +41,4 @@ async fn test_launch() {
             assert_eq!(e.is_cancelled(), true);
         }
     }
-
 }
