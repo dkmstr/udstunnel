@@ -4,7 +4,7 @@ pub struct Config {
     pub user: String,
 
     pub loglevel: String,
-    pub logfile: String,
+    pub logfile: Option<String>,
     pub logsize: u32,
     pub lognumber: u32,
 

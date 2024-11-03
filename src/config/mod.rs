@@ -60,20 +60,20 @@ impl ConfigLoader {
     }
 
     /// Set the configuration file to load
-    pub fn with_filename(&mut self, file: String) -> &mut Self {
-        self.filename = file;
+    pub fn with_filename(&mut self, file: &str) -> &mut Self {
+        self.filename = file.to_string();
         self
     }
 
     /// Set the UDS server location (https://...)
-    pub fn with_uds_server(&mut self, server: String) -> &mut Self {
-        self.uds_server = Some(server);
+    pub fn with_uds_server(&mut self, server: &str) -> &mut Self {
+        self.uds_server = Some(server.to_string());
         self
     }
 
     /// Set the UDS token to use
-    pub fn with_uds_token(&mut self, token: String) -> &mut Self {
-        self.uds_token = Some(token);
+    pub fn with_uds_token(&mut self, token: &str) -> &mut Self {
+        self.uds_token = Some(token.to_string());
         self
     }
 
@@ -98,7 +98,7 @@ impl ConfigLoader {
             .set_default("pidfile", "/var/run/udstunnel.pid")?
             .set_default("user", "nobody")?
             .set_default("loglevel", "INFO")?
-            .set_default("logfile", "/var/log/udstunnel.log")?
+            .set_default("logfile", "")?
             .set_default("logsize", "10M")?
             .set_default("lognumber", 4)?
             .set_default("address", "[::]")?
@@ -160,14 +160,19 @@ impl ConfigLoader {
             .filter(|s| !s.is_empty())
             .collect();
 
-        let _sslcert = cfg_reader.get::<String>("ssl_certificate")?;
+        let logfile = cfg_reader.get::<String>("logfile")?;
+        let logfile = if logfile.is_empty() {
+            None
+        } else {
+            Some(logfile)
+        };
 
         // Crate a configuration object
         Ok(types::Config {
             pidfile: cfg_reader.get("pidfile")?,
             user: cfg_reader.get("user")?,
             loglevel: cfg_reader.get::<String>("loglevel")?.to_uppercase(),
-            logfile: cfg_reader.get("logfile")?,
+            logfile: logfile,
             logsize,
             lognumber: cfg_reader.get("lognumber")?,
             listen_address: cfg_reader.get("address")?,
@@ -204,7 +209,7 @@ mod tests {
         assert_eq!(config.pidfile, "/var/run/udstunnel.pid");
         assert_eq!(config.user, "nobody");
         assert_eq!(config.loglevel, "INFO");
-        assert_eq!(config.logfile, "/var/log/udstunnel.log");
+        assert_eq!(config.logfile, None);
         assert_eq!(config.logsize, 10 * 1024 * 1024);
         assert_eq!(config.lognumber, 4);
         assert_eq!(config.listen_address, "[::]");
@@ -229,13 +234,13 @@ mod tests {
     #[test]
     fn test_load_config_from_file() {
         let config = ConfigLoader::new()
-            .with_filename("tests/udstunnel.conf".into())
+            .with_filename("tests/udstunnel.conf")
             .load()
             .unwrap();
         assert_eq!(config.pidfile, "/tmp/udstunnel.pid");
         assert_eq!(config.user, "dkmaster");
         assert_eq!(config.loglevel, "DEBUG");
-        assert_eq!(config.logfile, "/tmp/tunnel.log");
+        assert_eq!(config.logfile, Some("/tmp/tunnel.log".to_string()));
         assert_eq!(config.logsize, 120 * 1024 * 1024);
         assert_eq!(config.lognumber, 3);
         assert_eq!(config.listen_address, "0.0.0.0");
