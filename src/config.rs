@@ -136,7 +136,7 @@ impl ConfigLoader {
             .set_default("logfile", "")?
             .set_default("logsize", "10M")?
             .set_default("lognumber", 4)?
-            .set_default("address", "[::]")?
+            .set_default("address", "0.0.0.0")?
             .set_default("port", 4443)?
             .set_default("ipv6", false)?
             .set_default("workers", num_cores as u8)?
