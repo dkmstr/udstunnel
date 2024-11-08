@@ -3,13 +3,11 @@ extern crate udstunnel;
 
 use tokio::{
     self,
-    io::AsyncWriteExt,
-    net::TcpStream,
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::{TcpStream, TcpListener},
     task::JoinHandle,
     time::{timeout, Duration},
 };
-
-use env_logger::Env;
 
 //#[cfg(test)]
 //use mockall::automock;
@@ -18,21 +16,33 @@ use env_logger::Env;
 
 use udstunnel::{
     config,
-    tunnel::{self, client::connect, server::launch},
+    tunnel::{self, client::connect, consts, server::launch},
 };
 
-fn get_config() -> config::Config {
-    let config = config::ConfigLoader::new()
+async fn get_config() -> config::Config {
+    let mut config = config::ConfigLoader::new()
         .with_filename("tests/udstunnel.conf")
         .load()
         .unwrap();
+
+    // Get a free por for the configuration, so we can run multiple tests
+    match TcpListener::bind(format!("{}:0", config.listen_address)).await {
+        Ok(listener) => {
+            let addr = listener.local_addr().unwrap();
+            config.listen_port = addr.port();
+        }
+        Err(e) => {
+            panic!("Error binding listener: {:?}", e);
+        }
+    }
+
 
     tunnel::log::setup(&None, &config.loglevel);
     config
 }
 
 async fn create_server() -> (JoinHandle<()>, config::Config) {
-    let config = get_config();
+    let config = get_config().await;
 
     let launch_config = config.clone();
     let server = tokio::spawn(async move {
@@ -92,6 +102,47 @@ async fn test_launch_handshake() {
     assert!(client.is_ok());
 
     client.unwrap().shutdown().await.unwrap();
+
+    server.abort();
+
+    match server.await {
+        Ok(_) => (),
+        Err(e) => {
+            // Should be a cancel error
+            assert_eq!(e.is_cancelled(), true);
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_launch_handshake_timeout() {
+    let (server, config) = create_server().await;
+
+    // Let try to connect to the server
+    // Check it's listening...
+    let client = match timeout(
+        Duration::from_millis(200),
+        TcpStream::connect(format!("{}:{}", "localhost", config.listen_port)),
+    )
+    .await
+    {
+        Ok(conn) => conn,
+        Err(e) => {
+            panic!("Error connecting to server: {:?}", e);
+        }
+    };
+
+    // Note that connect already sends a handshake message
+    assert!(client.is_ok());
+
+    // Let's wait a bit to allow the server to process the handshake
+    tokio::time::sleep(consts::HANDSHAKE_TIMEOUT + tokio::time::Duration::from_millis(200)).await;
+
+    // If timeout, the socket will be closed, could not read from it
+    let mut buf = vec![0u8; 1];
+    assert!(client.unwrap().read_buf(&mut buf).await.unwrap() == 0);
+
+    // assert!(client.is_err());
 
     server.abort();
 

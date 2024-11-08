@@ -26,6 +26,7 @@
 /// # Example
 ///
 /// ```rust
+/// use udstunnel::config::ConfigLoader;
 /// let config = ConfigLoader::new()
 ///     .with_filename("custom_config.conf".into())
 ///     .with_uds_server("https://example.com/uds".into())

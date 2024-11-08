@@ -23,7 +23,7 @@ mod tests {
         assert_eq!(config.ipv6, false);
         assert_eq!(config.workers > 0, true);
         assert_eq!(config.ssl_min_tls_version, "1.2");
-        assert_eq!(config.ssl_certificate, "/etc/certs/cert.pem");
+        assert_eq!(config.ssl_certificate, "/etc/certs/server.pem");
         assert_eq!(config.ssl_certificate_key, "/etc/certs/key.pem");
         //assert_eq!(config.ssl_password, "");
         assert_eq!(config.ssl_ciphers, "");
@@ -58,11 +58,11 @@ mod tests {
         //assert_eq!(config.ssl_password, "MyPassword");
         assert_eq!(
             config.ssl_ciphers,
-            "ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512"
+            "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:ECDHE-ECDSA-CHACHA20-POLY1305-SHA256"
         );
         assert_eq!(config.uds_server, "https://127.0.0.1:8000/uds/rest/tunnel/ticket");
         assert_eq!(config.uds_token, "uds_token");
-        assert_eq!(config.uds_timeout, 16.0);
+        assert_eq!(config.uds_timeout, 4.0);
         assert_eq!(config.uds_verify_ssl, false);
         assert_eq!(config.command_timeout, 23.0);
         assert_eq!(config.secret, "MySecret");

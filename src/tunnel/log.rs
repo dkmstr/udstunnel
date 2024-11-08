@@ -4,6 +4,7 @@ use env_logger;
 
 // Setup logging
 pub fn setup(filename: &Option<String>, level: &str) {
+    // If already initialized, return
     let mut target = env_logger::Target::Stderr;
     if let Some(logfile) = filename {
         target = env_logger::Target::Pipe(Box::new(
@@ -37,7 +38,7 @@ pub fn setup(filename: &Option<String>, level: &str) {
                 record.args()
             )
         })
-        .init();
+        .try_init().unwrap_or_default();
 
     // let _ = cfg_builder
     //     .format(|buf, record| writeln!(buf, "[{}] {}", record.level(), record.args()))

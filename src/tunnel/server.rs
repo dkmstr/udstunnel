@@ -66,13 +66,20 @@ pub async fn launch(config: config::Config) -> Result<(), Box<dyn std::error::Er
         let task = tokio::spawn(async move {
             log::debug!("CONNECTION from {:?}", stream.peer_addr().unwrap());
 
-            // Read HANDSHAKE first
             let mut buf = vec![0u8; consts::HANDSHAKE_V1.len()];
 
-            let handshake = stream.read_exact(&mut buf).await;
+            // 1.- Read the handshake (with timeout)
+            let handshake =
+                match timeout(consts::HANDSHAKE_TIMEOUT, stream.read_exact(&mut buf)).await {
+                    Ok(handshake) => handshake,
+                    Err(e) => Err(e.into()),
+                };
 
             if handshake.is_err() || buf != consts::HANDSHAKE_V1 {
-                error::log_handshake_error(&stream, &buf);
+                error::log_handshake_error(&stream, &buf, false).await;
+                stream.shutdown().await.unwrap_or_else(|e| {
+                    log::warn!("Could not shutdown stream: {:?}", e);
+                });
                 return;
             }
             let mut stream = acceptor.accept(stream).await.unwrap();

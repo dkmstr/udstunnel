@@ -1,3 +1,7 @@
+use std::time::Duration;
+
+pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(3);
+
 pub const BUFFER_SIZE: usize = 1024 * 16;
 pub const HANDSHAKE_V1: &[u8] = b"\x5AMGB\xA5\x01\x00";
 pub const TICKET_LENGTH: usize = 48;

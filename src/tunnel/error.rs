@@ -1,7 +1,7 @@
 use std::fmt;
 
-use log::error;
-use tokio::net::TcpStream;
+use log;
+use tokio::{io::AsyncWriteExt, net::TcpStream};
 
 #[derive(Debug)]
 pub struct UDSError {
@@ -24,14 +24,23 @@ impl fmt::Display for UDSError {
 
 impl std::error::Error for UDSError {}
 
-pub(crate) fn log_handshake_error(from: &TcpStream, bytes: &[u8]) -> () {
+pub(crate) async fn log_handshake_error(stream: &TcpStream, bytes: &[u8], timeout: bool) -> () {
     // Generate hex representation of the first 16 bytes
-    let hex = bytes[0..std::cmp::min(bytes.len(), 16)]
-        .iter()
-        .map(|b| format!("{:02x}", b))
-        .collect::<Vec<String>>()
-        .join(":");
-    let from = from.peer_addr().unwrap_or_else(|_| "[unknown]".parse().unwrap());
+    let from = stream
+        .peer_addr()
+        .unwrap_or_else(|_| "[unknown]".parse().unwrap());
 
-    error!("HANDSHAKE error from {from}: {hex}");
+    let msg;
+    if timeout {
+        msg = format!("invalid from {from}: timed out");
+    } else {
+        let hex = bytes[0..std::cmp::min(bytes.len(), 16)]
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<Vec<String>>()
+            .join("");
+        msg = format!("invalid from {from}: invalid data: {hex}");
+    }
+    log::error!("HANDSHAKE: {}", msg);
+
 }
