@@ -1,26 +1,35 @@
-use log::{debug, error, info};
+use log::{debug, info};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio_rustls::{
     rustls::{
         pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer},
+        version::{TLS12, TLS13},
         ServerConfig,
     },
     TlsAcceptor,
 };
 
 use super::super::config;
-use super::consts;
+use super::{consts, error};
 
 pub async fn launch(config: config::Config) -> Result<(), Box<dyn std::error::Error>> {
-    // Configure TLS
     let certs = CertificateDer::from_pem_file(config.ssl_certificate).unwrap();
-    let private_key: PrivateKeyDer<'_> = PrivateKeyDer::from_pem_file(config.ssl_certificate_key).unwrap();
+    let private_key: PrivateKeyDer<'_> =
+        PrivateKeyDer::from_pem_file(config.ssl_certificate_key).unwrap();
 
-    let server_ssl_config: ServerConfig = ServerConfig::builder()
-        .with_no_client_auth()
-        .with_single_cert(vec![certs], private_key)?;
+    let protocol_versions: Vec<&rustls::SupportedProtocolVersion> =
+        match config.ssl_min_tls_version.as_str() {
+            "1.2" => vec![&TLS12],
+            "1.3" => vec![&TLS13],
+            _ => vec![&TLS12, &TLS13],
+        };
+
+    let server_ssl_config: ServerConfig =
+        ServerConfig::builder_with_protocol_versions(&protocol_versions)
+            .with_no_client_auth()
+            .with_single_cert(vec![certs], private_key)?;
 
     let tls_acceptor = TlsAcceptor::from(Arc::new(server_ssl_config));
 
@@ -36,7 +45,7 @@ pub async fn launch(config: config::Config) -> Result<(), Box<dyn std::error::Er
         format!("{}:{}", config.listen_address, config.listen_port)
     };
 
-    info!("Servidor TLS corriendo en {}", address);
+    info!("Tunnel server running on {}", address);
 
     let listener = TcpListener::bind(address).await?;
     loop {
@@ -44,13 +53,15 @@ pub async fn launch(config: config::Config) -> Result<(), Box<dyn std::error::Er
         let acceptor = tls_acceptor.clone();
 
         let task = tokio::spawn(async move {
+            debug!("CONNECTION from {:?}", stream.peer_addr().unwrap());
+
             // Read HANDSHAKE first
             let mut buf = vec![0u8; consts::HANDSHAKE_V1.len()];
 
             let handshake = stream.read_exact(&mut buf).await;
 
             if handshake.is_err() || buf != consts::HANDSHAKE_V1 {
-                error!("Error reading handshake: {:?}", handshake);
+                error::log_handshake_error(&stream, &buf);
                 return;
             }
             let mut stream = acceptor.accept(stream).await.unwrap();
