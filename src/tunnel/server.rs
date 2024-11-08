@@ -1,8 +1,8 @@
 use log;
-use std::{f32::consts::E, sync::Arc};
+use std::sync::Arc;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream},
+    net::TcpListener,
     time::timeout,
 };
 use tokio_rustls::{

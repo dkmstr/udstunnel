@@ -126,7 +126,7 @@ mod tests {
         assert_eq!(Command::from_str("TEST"), Some(Command::Test));
         assert_eq!(Command::from_str("STAT"), Some(Command::Stat));
         assert_eq!(Command::from_str("INFO"), Some(Command::Info));
-        assert_eq!(Command::from_str("INVALID"), None);
+        assert_eq!(Command::from_str("INVALID"), Some(Command::Unknown));
 
         // Test into
         let command: Command = "OPEN 123456789012345678901234567890123456789012345678"
