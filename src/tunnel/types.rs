@@ -1,3 +1,5 @@
+use tokio::io::AsyncReadExt;
+
 use super::consts;
 
 #[derive(Debug, PartialEq)]
@@ -30,6 +32,18 @@ impl Command {
             consts::COMMAND_STAT => Some(Command::Stat),
             consts::COMMAND_INFO => Some(Command::Info),
             _ => None,
+        }
+    }
+
+    pub async fn read_from_stream(stream: &mut tokio::net::TcpStream) -> Option<Self> {
+        let mut buffer = [0; consts::COMMAND_LENGTH];
+        stream.readable().await.unwrap();
+        match stream.read(&mut buffer).await {
+            Ok(_) => {
+                let command = String::from_utf8(buffer.to_vec()).unwrap();
+                Command::from_str(&command)
+            }
+            Err(_) => None,
         }
     }
 }

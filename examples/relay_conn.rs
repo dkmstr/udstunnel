@@ -1,4 +1,4 @@
-use tokio::{io::{self, AsyncWriteExt}, net::{TcpListener, TcpStream}, task};
+use tokio::{io::{self, AsyncReadExt, AsyncWriteExt}, net::{TcpListener, TcpStream}, task};
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
@@ -8,7 +8,7 @@ async fn main() -> io::Result<()> {
         let (socket, _) = listener.accept().await?;
 
         tokio::spawn(async move {
-            let (reader, mut writer) = socket.into_split();
+            let (mut reader, mut writer) = socket.into_split();
 
             let relay = TcpStream::connect("dc.dkmon.local:3389").await.unwrap();
             let (relay_reader, mut relay_writer) = relay.into_split();
@@ -18,8 +18,9 @@ async fn main() -> io::Result<()> {
                 // Only need to transfer the pointer, not the data as in the case of [u8; 1024]
                 let mut buf = vec![0; 1024];
                 loop {
-                    let _ = reader.readable().await.unwrap();
-                    match reader.try_read(&mut buf) {
+                    //let _ = reader.readable().await.unwrap();
+                    // match reader.try_read(&mut buf) {
+                    match reader.read(&mut buf).await {
                         Ok(0) => {
                             break;
                         }
