@@ -4,6 +4,8 @@ use udstunnel::config::ConfigLoader;
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
 
     #[test]
@@ -29,9 +31,9 @@ mod tests {
         assert_eq!(config.ssl_ciphers, "");
         assert_eq!(config.uds_server, "");
         assert_eq!(config.uds_token, "");
-        assert_eq!(config.uds_timeout, 10.0);
+        assert_eq!(config.uds_timeout, Duration::from_millis(10000));
         assert_eq!(config.uds_verify_ssl, true);
-        assert_eq!(config.command_timeout, 3.0);
+        assert_eq!(config.command_timeout, Duration::from_millis(3000));
         assert_eq!(config.secret, "");
         assert_eq!(config.allow, Vec::<String>::new());
     }
@@ -62,9 +64,9 @@ mod tests {
         );
         assert_eq!(config.uds_server, "https://127.0.0.1:8000/uds/rest/tunnel/ticket");
         assert_eq!(config.uds_token, "uds_token");
-        assert_eq!(config.uds_timeout, 4.0);
+        assert_eq!(config.uds_timeout, Duration::from_millis(4000));
         assert_eq!(config.uds_verify_ssl, false);
-        assert_eq!(config.command_timeout, 23.0);
+        assert_eq!(config.command_timeout, Duration::from_millis(13000));
         assert_eq!(config.secret, "MySecret");
         assert_eq!(config.allow, vec!["127.0.0.1", "127.0.0.2"]);
     }

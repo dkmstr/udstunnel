@@ -1,4 +1,3 @@
-use env_logger::Env;
 use log::{debug, info};
 
 use udstunnel::tunnel::{self, consts};
@@ -9,35 +8,6 @@ use clap;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // group.add_argument('-t', '--tunnel', help='Starts the tunnel server', action='store_true')
-    // # group.add_argument('-r', '--rdp', help='RDP Tunnel for traffic accounting')
-    // group.add_argument(
-    //     '-s',
-    //     '--stats',
-    //     help='get current global stats from RUNNING tunnel',
-    //     action='store_true',
-    // )
-    // group.add_argument(
-    //     '-d',
-    //     '--detailed-stats',
-    //     help='get current detailed stats from RUNNING tunnel',
-    //     action='store_true',
-    // )
-    // # Config file
-    // parser.add_argument(
-    //     '-c',
-    //     '--config',
-    //     help=f'Config file to use (default: {consts.CONFIGFILE})',
-    //     default=consts.CONFIGFILE,
-    // )
-    // # If force ipv6
-    // parser.add_argument(
-    //     '-6',
-    //     '--ipv6',
-    //     help='Force IPv6 for tunnel server',
-    //     action='store_true',
-    // )
-    // args = parser.parse_args()
     let cmd = clap::Command::new("udstunnel")
         .version("5.0.0")
         .author("Adolfo Gómez <dkmaster@dkmon.com>")
@@ -100,6 +70,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     debug!("Config: {:?}", config);
     //println!("{}", cmd.render_long_help());
+
+    if tunnel {
+        match launch(config).await {
+            Ok(_) => {
+                info!("Tunnel server started");
+            }
+            Err(e) => {
+                info!("Error starting tunnel server: {:?}", e);
+            }
+        }
+    }
 
     Ok(())
 

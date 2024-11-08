@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 /// The `ConfigLoader` struct is responsible for loading and managing the configuration
 /// for the UDS tunnel application. It provides methods to set various configuration
 /// parameters and load the configuration from a file or environment variables.
@@ -52,7 +54,7 @@ pub struct Config {
 
     pub workers: u8,
 
-    pub ssl_min_tls_version: String,  // Valid values are 1.2, 1.3 (1.0 and 1.1 are not supported)
+    pub ssl_min_tls_version: String, // Valid values are 1.2, 1.3 (1.0 and 1.1 are not supported)
     pub ssl_certificate: String,
     pub ssl_certificate_key: String,
     //pub ssl_password: String,  // Maybe supported in the future
@@ -60,18 +62,16 @@ pub struct Config {
 
     pub uds_server: String,
     pub uds_token: String,
-    pub uds_timeout: f32,
+    pub uds_timeout: Duration,
     pub uds_verify_ssl: bool,
 
-    pub command_timeout: f32,
+    pub command_timeout: Duration,
 
     pub secret: String,
     pub allow: Vec<String>,
-
     // Not used on rust
     // use_uvloop: bool
 }
-
 
 pub struct ConfigLoader {
     filename: String,
@@ -201,6 +201,18 @@ impl ConfigLoader {
         } else {
             Some(logfile)
         };
+        let command_timeout = cfg_reader
+            .get::<f32>("command_timeout")
+            .unwrap_or(3.0)
+            .min(16.0)
+            .max(0.4);
+        let command_timeout = Duration::from_millis((command_timeout * 1000.0) as u64);
+        let uds_timeout = cfg_reader
+            .get::<f32>("uds_timeout")
+            .unwrap_or(10.0)
+            .min(60.0)
+            .max(0.1);
+        let uds_timeout = Duration::from_millis((uds_timeout * 1000.0) as u64);
 
         // Crate a configuration object
         Ok(Config {
@@ -221,12 +233,11 @@ impl ConfigLoader {
             ssl_ciphers: cfg_reader.get("ssl_ciphers")?,
             uds_server: cfg_reader.get("uds_server")?,
             uds_token: cfg_reader.get("uds_token")?,
-            uds_timeout: cfg_reader.get("uds_timeout")?,
+            uds_timeout: uds_timeout,
             uds_verify_ssl: cfg_reader.get("uds_verify_ssl")?,
-            command_timeout: cfg_reader.get("command_timeout")?,
+            command_timeout: command_timeout,
             secret: cfg_reader.get("secret")?,
             allow,
         })
     }
 }
-
