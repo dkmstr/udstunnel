@@ -1,7 +1,10 @@
 use log;
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpListener,
+    time::{timeout, Duration},
+};
 use tokio_rustls::{
     rustls::{
         pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer},
@@ -75,7 +78,6 @@ pub async fn launch(config: config::Config) -> Result<(), Box<dyn std::error::Er
             let mut stream = acceptor.accept(stream).await.unwrap();
 
             // Now, we expect the command
-            
 
             stream.shutdown().await.unwrap();
         });

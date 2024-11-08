@@ -1,7 +1,7 @@
 use env_logger::Env;
 use log::{debug, info};
 
-use udstunnel::tunnel::consts;
+use udstunnel::tunnel::{self, consts};
 
 use udstunnel::{config, tunnel::server::launch};
 
@@ -94,21 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .load()
         .unwrap();
 
-    let mut target = env_logger::Target::Stderr;
-    if let Some(logfile) = &config.logfile {
-        target = env_logger::Target::Pipe(Box::new(
-            std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(logfile)
-                .unwrap(),
-        ));
-    }
-
-    // Set loglevel
-    env_logger::Builder::from_env(Env::default().default_filter_or(config.loglevel.clone()))
-        .target(target)
-        .init();
+    tunnel::log::setup(&config.logfile, &config.loglevel);
 
     info!("Starting udstunnel v{}", consts::VERSION);
 

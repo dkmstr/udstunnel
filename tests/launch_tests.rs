@@ -18,19 +18,20 @@ use env_logger::Env;
 
 use udstunnel::{
     config,
-    tunnel::{client::connect, server::launch},
+    tunnel::{self, client::connect, server::launch},
 };
 
 fn get_config() -> config::Config {
-    config::ConfigLoader::new()
+    let config = config::ConfigLoader::new()
         .with_filename("tests/udstunnel.conf")
         .load()
-        .unwrap()
+        .unwrap();
+
+    tunnel::log::setup(&None, &config.loglevel);
+    config
 }
 
 async fn create_server() -> (JoinHandle<()>, config::Config) {
-    env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
-
     let config = get_config();
 
     let launch_config = config.clone();
