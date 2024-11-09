@@ -2189,6 +2189,7 @@ dependencies = [
  "mockall",
  "reqwest",
  "rustls",
+ "serde",
  "tokio",
  "tokio-rustls",
  "tokio-test",
