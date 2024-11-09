@@ -20,11 +20,15 @@ impl Command {
         match &s[..consts::COMMAND_LENGTH] {
             consts::COMMAND_OPEN => {
                 // Get remainder of string after "OPEN " as the target (it's an ticket)
-                // OPEN <ticket>
+                // OPEN<ticket>
                 // Ensure also that it has TICKET_LENGTH characters
-                let ticket = s.get(consts::COMMAND_OPEN.len() + 1..)?;
+                let ticket = s.get(consts::COMMAND_OPEN.len()..)?;
                 if ticket.len() == consts::TICKET_LENGTH {
-                    Some(Command::Open(ticket.to_string()))
+                    // Should match "^[a-zA-Z0-9]{48}$", 48 characters long and only ascii alphanumeric
+                    if ticket.chars().all(|c| c.is_ascii_alphanumeric()) {
+                        return Some(Command::Open(ticket.to_string()));
+                    }
+                    return None;  // Invalid ticket, not alphanumeric
                 } else {
                     None
                 }
@@ -110,17 +114,17 @@ mod tests {
     #[test]
     fn test_command_from_str() {
         assert_eq!(
-            Command::from_str("OPEN 123456789012345678901234567890123456789012345678"),
+            Command::from_str("OPEN123456789012345678901234567890123456789012345678"),
             Some(Command::Open(
                 "123456789012345678901234567890123456789012345678".to_string()
             ))
         );
         assert_eq!(
-            Command::from_str("OPEN 12345678901234567890123456789012345678901234567"),
+            Command::from_str("OPEN12345678901234567890123456789012345678901234567"),
             None
         );
         assert_eq!(
-            Command::from_str("OPEN 1234567890123456789012345678901234567890123456789"),
+            Command::from_str("OPEN1234567890123456789012345678901234567890123456789"),
             None
         );
         assert_eq!(Command::from_str("TEST"), Some(Command::Test));
@@ -129,7 +133,7 @@ mod tests {
         assert_eq!(Command::from_str("INVALID"), Some(Command::Unknown));
 
         // Test into
-        let command: Command = "OPEN 123456789012345678901234567890123456789012345678"
+        let command: Command = "OPEN123456789012345678901234567890123456789012345678"
             .to_string()
             .into();
         assert_eq!(

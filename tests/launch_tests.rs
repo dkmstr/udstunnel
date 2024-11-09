@@ -16,7 +16,7 @@ use tokio::{
 
 use udstunnel::{
     config,
-    tunnel::{self, client::connect, consts, server::launch},
+    tunnel::{self, client::connect, consts, server::run},
 };
 
 async fn get_config() -> config::Config {
@@ -46,7 +46,7 @@ async fn create_server() -> (JoinHandle<()>, config::Config) {
 
     let launch_config = config.clone();
     let server = tokio::spawn(async move {
-        let result = launch(launch_config).await;
+        let result = run(launch_config).await;
         assert!(result.is_ok());
     });
 

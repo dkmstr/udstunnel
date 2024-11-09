@@ -15,12 +15,12 @@ use tokio_rustls::{
 };
 use uuid;
 
-use crate::tunnel::types;
+use crate::tunnel::{relay, types};
 
-use super::super::{config, tls};
-use super::{consts, error};
+use super::consts;
+use crate::{config, tls};
 
-pub async fn launch(config: config::Config) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run(config: config::Config) -> Result<(), Box<dyn std::error::Error>> {
     let certs = CertificateDer::from_pem_file(config.ssl_certificate).unwrap();
     let private_key: PrivateKeyDer<'_> =
         PrivateKeyDer::from_pem_file(config.ssl_certificate_key).unwrap();
@@ -67,6 +67,11 @@ pub async fn launch(config: config::Config) -> Result<(), Box<dyn std::error::Er
         let acceptor = tls_acceptor.clone();
         let connection_id = uuid::Uuid::new_v4().to_string()[..13].to_string();
         let from: String = stream.peer_addr().unwrap().to_string();
+
+        // Copy values for laucher if needeed
+        let uds_url = config.uds_server.clone();
+        let uds_verify_ssl = config.uds_verify_ssl;
+        let uds_timeout = config.uds_timeout;
 
         let task = tokio::spawn(async move {
             log::info!("CONNECTION ({connection_id}) from {from}");
@@ -128,7 +133,7 @@ pub async fn launch(config: config::Config) -> Result<(), Box<dyn std::error::Er
                 match command {
                     types::Command::Open(ticket) => {
                         stream.write_all(OK_RESPONSE.to_bytes()).await.unwrap();
-                        // TODO: Launch the relay
+                        relay::run(&mut stream, ticket, uds_url, uds_verify_ssl, uds_timeout).await;
                     }
                     types::Command::Test => {
                         log::info!("TEST ({connection_id}) from {from}");

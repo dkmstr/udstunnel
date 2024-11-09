@@ -73,6 +73,7 @@ pub struct Config {
     // use_uvloop: bool
 }
 
+
 pub struct ConfigLoader {
     filename: String,
     uds_server: Option<String>,
@@ -219,7 +220,7 @@ impl ConfigLoader {
             pidfile: cfg_reader.get("pidfile")?,
             user: cfg_reader.get("user")?,
             loglevel: cfg_reader.get::<String>("loglevel")?.to_uppercase(),
-            logfile: logfile,
+            logfile,
             logsize,
             lognumber: cfg_reader.get("lognumber")?,
             listen_address: cfg_reader.get("address")?,
@@ -233,9 +234,9 @@ impl ConfigLoader {
             ssl_ciphers: cfg_reader.get("ssl_ciphers")?,
             uds_server: cfg_reader.get("uds_server")?,
             uds_token: cfg_reader.get("uds_token")?,
-            uds_timeout: uds_timeout,
+            uds_timeout,
             uds_verify_ssl: cfg_reader.get("uds_verify_ssl")?,
-            command_timeout: command_timeout,
+            command_timeout,
             secret: cfg_reader.get("secret")?,
             allow,
         })

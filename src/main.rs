@@ -2,7 +2,7 @@ use log::{debug, info};
 
 use udstunnel::tunnel::{self, consts};
 
-use udstunnel::{config, tunnel::server::launch};
+use udstunnel::{config, tunnel::server::run};
 
 use clap;
 
@@ -72,7 +72,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //println!("{}", cmd.render_long_help());
 
     if tunnel {
-        match launch(config).await {
+        match run(config).await {
             Ok(_) => {
                 info!("Tunnel server started");
             }
