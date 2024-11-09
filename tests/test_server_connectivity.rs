@@ -10,8 +10,6 @@ use tokio::{
     time::{timeout, Duration},
 };
 
-use tokio_rustls::rustls::crypto::CryptoProvider;
-
 //#[cfg(test)]
 //use mockall::automock;
 
