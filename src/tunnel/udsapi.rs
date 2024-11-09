@@ -1,4 +1,9 @@
-use serde::{Deserialize, Serialize};
+use /// `serde` is a popular Rust library for serializing and deserializing data structures. It provides
+/// macros to automatically derive implementations of the `Serialize` and `Deserialize` traits for
+/// Rust data structures, allowing them to be easily converted to and from JSON, XML, and other
+/// formats. In the code snippet you provided, `serde` is used to serialize and deserialize the
+/// `UdsTicketResponse` struct to and from JSON.
+serde::{Deserialize, Serialize};
 
 use crate::config;
 
