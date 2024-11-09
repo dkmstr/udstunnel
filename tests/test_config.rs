@@ -1,6 +1,7 @@
 extern crate udstunnel;
 
 use udstunnel::config::ConfigLoader;
+mod fake;
 
 #[cfg(test)]
 mod tests {
@@ -62,7 +63,7 @@ mod tests {
             config.ssl_ciphers,
             "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:ECDHE-ECDSA-CHACHA20-POLY1305-SHA256"
         );
-        assert_eq!(config.uds_server, "https://127.0.0.1:8000/uds/rest/tunnel/ticket");
+        assert_eq!(config.uds_server, "http://127.0.0.1:8000/uds/rest/tunnel/ticket");
         assert_eq!(config.uds_token, "uds_token");
         assert_eq!(config.uds_timeout, Duration::from_millis(4000));
         assert_eq!(config.uds_verify_ssl, false);

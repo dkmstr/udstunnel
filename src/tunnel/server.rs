@@ -65,14 +65,13 @@ pub async fn run(config: config::Config) -> Result<(), Box<dyn std::error::Error
     loop {
         let (mut stream, _) = listener.accept().await?;
         let acceptor = tls_acceptor.clone();
-        let connection_id = uuid::Uuid::new_v4().to_string()[..13].to_string();
+        let tunnel_id = uuid::Uuid::new_v4().to_string()[..13].to_string();
         let src: String = stream.peer_addr().unwrap().to_string();
 
-        // Copy needed parameters for relay
-        let config = config.clone();
+        let config = config.clone();  // Clone the config to move it to the task
 
         let task = tokio::spawn(async move {
-            log::info!("CONNECTION ({connection_id}) from {src}");
+            log::info!("CONNECTION ({tunnel_id}) from {src}");
 
             let mut buf = vec![0u8; consts::HANDSHAKE_V1.len()];
 
@@ -86,14 +85,14 @@ pub async fn run(config: config::Config) -> Result<(), Box<dyn std::error::Error
             // If no valid, even if timeout, close the connection and log the error
             if handshake.is_err() || buf != consts::HANDSHAKE_V1 {
                 // If it's not a timeout, log the error
-                log_error(handshake.err(), &buf, &connection_id, &src, "HANDSHAKE").await;
+                log_error(handshake.err(), &buf, &tunnel_id, &src, "HANDSHAKE").await;
                 stream.shutdown().await.unwrap_or_else(|e| {
                     log::warn!("Could not shutdown stream: {:?}", e);
                 });
                 return;
             }
 
-            log::debug!("HANDSHAKE ({connection_id}) from {src}");
+            log::debug!("HANDSHAKE ({tunnel_id}) from {src}");
 
             // 2.- Upgrade the connection to TLS
             let mut stream = acceptor.accept(stream).await.unwrap();
@@ -108,7 +107,7 @@ pub async fn run(config: config::Config) -> Result<(), Box<dyn std::error::Error
             // Check command result
             if command.is_err() {
                 let is_timeout =
-                    log_error(command.err(), &buf, &connection_id, &src, "COMMAND").await;
+                    log_error(command.err(), &buf, &tunnel_id, &src, "COMMAND").await;
                 if is_timeout {
                     stream
                         .write_all(types::Response::TimeoutError.to_bytes())
@@ -125,36 +124,36 @@ pub async fn run(config: config::Config) -> Result<(), Box<dyn std::error::Error
             }
 
             if let Some(command) = types::Command::from_bytes(&buf) {
-                log::info!("COMMAND ({connection_id}) {command} from {src}");
+                log::info!("COMMAND ({tunnel_id}) {command} from {src}");
                 const OK_RESPONSE: types::Response = types::Response::Ok;
 
                 match command {
                     types::Command::Open(ticket) => {
                         stream.write_all(OK_RESPONSE.to_bytes()).await.unwrap();
-                        relay::run(stream, ticket, config).await;
+                        relay::RelayConnection::new(tunnel_id, ticket, &config).run(stream).await;
                     }
                     types::Command::Test => {
-                        log::info!("TEST ({connection_id}) from {src}");
+                        log::info!("TEST ({tunnel_id}) from {src}");
                         stream.write_all(OK_RESPONSE.to_bytes()).await.unwrap();
                         // Returns and closes the connection
                         stream.shutdown().await.unwrap();
                     }
                     // Stat and info are only allowed from config.allow sources (list of ips, no networks)
                     types::Command::Stat => {
-                        log::info!("STAT ({connection_id}) from {src}");
+                        log::info!("STAT ({tunnel_id}) from {src}");
                         stream.write_all(OK_RESPONSE.to_bytes()).await.unwrap();
                         // TODO: Return stats
                         stream.shutdown().await.unwrap();
                     }
                     types::Command::Info => {
-                        log::info!("INFO ({connection_id}) from {src}");
+                        log::info!("INFO ({tunnel_id}) from {src}");
                         stream.write_all(OK_RESPONSE.to_bytes()).await.unwrap();
                         // TODO: Return info
                         stream.shutdown().await.unwrap();
 
                     }
                     types::Command::Unknown => {
-                        log_error(None, &buf, &connection_id, &src, "COMMAND").await;
+                        log_error(None, &buf, &tunnel_id, &src, "COMMAND").await;
                         stream
                             .write_all(types::Response::CommandError.to_bytes())
                             .await
@@ -164,8 +163,8 @@ pub async fn run(config: config::Config) -> Result<(), Box<dyn std::error::Error
                 }
             } else {
                 let hex = to_hex(&buf);
-                log_error(command.err(), &buf, &connection_id, &src, "COMMAND").await;
-                log::error!("COMMAND ({connection_id}) invalid from {src}: {hex}");
+                log_error(command.err(), &buf, &tunnel_id, &src, "COMMAND").await;
+                log::error!("COMMAND ({tunnel_id}) invalid from {src}: {hex}");
                 let response = types::Response::CommandError;
                 stream.write_all(response.to_bytes()).await.unwrap();
             }

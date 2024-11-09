@@ -1,3 +1,4 @@
+use rustls::{crypto::aws_lc_rs, ALL_VERSIONS};
 use tokio::{io, net::TcpStream};
 
 use std::fmt;
@@ -77,9 +78,12 @@ impl ConnectionBuilder {
         let mut root_store = RootCertStore::empty();
         root_store.add_parsable_certificates(certs);
 
-        let mut config = rustls::ClientConfig::builder()
-            .with_root_certificates(root_store)
-            .with_no_client_auth();
+        let mut config =
+            rustls::ClientConfig::builder_with_provider(Arc::new(aws_lc_rs::default_provider()))
+                .with_protocol_versions(ALL_VERSIONS)
+                .unwrap()
+                .with_root_certificates(root_store)
+                .with_no_client_auth();
 
         if !self.verify {
             config

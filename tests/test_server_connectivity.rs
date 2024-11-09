@@ -1,65 +1,28 @@
 #[cfg(test)]
 extern crate udstunnel;
 
+mod fake;
+
 use tokio::{
     self,
     io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpStream, TcpListener},
-    task::JoinHandle,
+    net::TcpStream,
     time::{timeout, Duration},
 };
+
+use tokio_rustls::rustls::crypto::CryptoProvider;
 
 //#[cfg(test)]
 //use mockall::automock;
 
 //#[cfg_attr(test, automock)]
 
-use udstunnel::{
-    config,
-    tunnel::{self, client::connect, consts, server::run},
-};
-
-async fn get_config() -> config::Config {
-    let mut config = config::ConfigLoader::new()
-        .with_filename("tests/udstunnel.conf")
-        .load()
-        .unwrap();
-
-    // Get a free por for the configuration, so we can run multiple tests
-    match TcpListener::bind(format!("{}:0", config.listen_address)).await {
-        Ok(listener) => {
-            let addr = listener.local_addr().unwrap();
-            config.listen_port = addr.port();
-        }
-        Err(e) => {
-            panic!("Error binding listener: {:?}", e);
-        }
-    }
-
-
-    tunnel::log::setup(&None, &config.loglevel);
-    config
-}
-
-async fn create_server() -> (JoinHandle<()>, config::Config) {
-    let config = get_config().await;
-
-    let launch_config = config.clone();
-    let server = tokio::spawn(async move {
-        let result = run(launch_config).await;
-        assert!(result.is_ok());
-    });
-
-    // Should be listening on configure port, let's wait a bit to
-    // allow tokio to start the server
-    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-
-    (server, config)
-}
+use udstunnel::tunnel::{client::connect, consts};
 
 #[tokio::test]
 async fn test_launch_listens() {
-    let (server, config) = create_server().await;
+    let config = fake::config::read().await;
+    let server = fake::tunnel_server::create(&config).await;
 
     // Check it's listening...
     match timeout(
@@ -94,7 +57,8 @@ async fn test_launch_listens() {
 
 #[tokio::test]
 async fn test_launch_handshake() {
-    let (server, config) = create_server().await;
+    let config = fake::config::read().await;
+    let server = fake::tunnel_server::create(&config).await;
 
     // Let try to connect to the server
     let client = connect("localhost", config.listen_port, false).await;
@@ -116,7 +80,8 @@ async fn test_launch_handshake() {
 
 #[tokio::test]
 async fn test_launch_handshake_timeout() {
-    let (server, config) = create_server().await;
+    let config = fake::config::read().await;
+    let server = fake::tunnel_server::create(&config).await;
 
     // Let try to connect to the server
     // Check it's listening...
