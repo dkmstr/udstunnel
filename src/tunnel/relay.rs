@@ -2,6 +2,7 @@ use std::{io, sync::Arc};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
+    sync::broadcast,
 };
 use tokio_rustls::server::TlsStream;
 
@@ -32,6 +33,7 @@ impl RelayConnection {
     pub(crate) async fn run(
         &mut self,
         mut client_stream: TlsStream<TcpStream>, // move value
+        mut task_stopper: broadcast::Receiver<()>,
     ) -> () {
         // 1.- Try to get the ticket from UDS Server
         // 2.- If ticket is not found, log the error and return (caller will close the connection)
@@ -71,62 +73,100 @@ impl RelayConnection {
 
         // Open the connection to the destination server (server stream)
         let server = format!("{}:{}", uds_response.host, uds_response.port);
-        let server_stream = TcpStream::connect(server).await.unwrap();
+
+        log::debug!("Connecting to {}", server);
+        let server_stream = match TcpStream::connect(server.clone()).await {
+            Ok(stream) => stream,
+            Err(e) => {
+                log::error!("Error connecting to {}: {:?}", server, e);
+                return;
+            }
+        };
+
         let (mut server_reader, mut server_writer) = server_stream.into_split();
 
         // Split the client stream into reader and writer
         let (mut client_reader, mut client_writer) = tokio::io::split(client_stream);
 
+        let stop_broadcaster = Arc::new(broadcast::channel::<()>(1).0);
+
+        // Task to watch for stop signal and relay it to stop_broadcaster
+        let child_stopper = stop_broadcaster.clone(); // To be moved to the task
+        tokio::spawn(async move {
+            task_stopper.recv().await.unwrap();
+            child_stopper.send(()).unwrap();
+        });
+
+        let mut server_to_client_stopper = stop_broadcaster.subscribe();
         let server_to_client = tokio::task::spawn(async move {
             // Using a buf on heap so transfer between tasks is faster
             // Only need to transfer the pointer, not the data as in the case of [u8; 1024]
             let mut buf = vec![0; 1024];
+            log::debug!("Starting server_to_client task");
             loop {
-                //let _ = reader.readable().await.unwrap();
-                // match reader.try_read(&mut buf) {
-                match server_reader.read_buf(&mut buf).await {
-                    Ok(0) => {
+                tokio::select! {
+                    _ = server_to_client_stopper.recv() => {
+                        log::debug!("Stopping server_to_client task");
                         break;
                     }
-                    Ok(n) => {
-                        client_writer.write_all(&buf[..n]).await.unwrap();
-                    }
-                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                        continue;
-                    }
-                    Err(e) => {
-                        // Last one, move value
-                        println!("Error reading from relay: {:?}", e);
-                        break;
+                    read_result = server_reader.read_buf(&mut buf) => {
+                        match read_result {
+                            Ok(0) => {
+                                break;
+                            }
+                            Ok(n) => {
+                                client_writer.write_all(&buf[..n]).await.unwrap();
+                            }
+                            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                                continue;
+                            }
+                            Err(e) => {
+                                // Last one, move value
+                                println!("Error reading from relay: {:?}", e);
+                                break;
+                            }
+                        }
                     }
                 }
             }
         });
 
+        let mut client_to_server_stopper = stop_broadcaster.subscribe();
         let client_to_server = tokio::task::spawn(async move {
             // Using a buf on heap so transfer between tasks is faster
             // Only need to transfer the pointer, not the data as in the case of [u8; 1024]
             let mut buf = vec![0; 1024];
+            log::debug!("Starting client_to_server task");
             loop {
-                match client_reader.read_buf(&mut buf).await {
-                    Ok(0) => {
+                tokio::select! {
+                    _ = client_to_server_stopper.recv() => {
+                        log::debug!("Stopping client_to_server task");
                         break;
                     }
-                    Ok(n) => {
-                        server_writer.write_all(&buf[..n]).await.unwrap();
-                    }
-                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                        continue;
-                    }
-                    Err(e) => {
-                        // Last one, move value
-                        println!("Error reading from relay: {:?}", e);
-                        break;
+                    read_result = client_reader.read_buf(&mut buf) => {
+                        match read_result {
+                            Ok(0) => {
+                                break;
+                            }
+                            Ok(n) => {
+                                server_writer.write_all(&buf[..n]).await.unwrap();
+                            }
+                            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                                continue;
+                            }
+                            Err(e) => {
+                                // Last one, move value
+                                println!("Error reading from relay: {:?}", e);
+                                break;
+                            }
+                        }
                     }
                 }
             }
         });
         // As soon as one of the tasks completes, the other task will be cancelled
+
+        log::debug!("Waiting for any to complete");
         tokio::select! {
             res = client_to_server => {
                 log::debug!("client_to_server task completed: {:?}", res);
@@ -135,10 +175,15 @@ impl RelayConnection {
                 log::debug!("Write task completed: {:?}", res);
             }
         }
-        // As soon as the tasks are completed, the connection will be closed
+        // As soon as one or the tasks is completed, the connection will be closed
+        // Ant the other task will be cancelled
         // because the streams halves will get out of scope, so they will be dropped
 
+        // Ensure other task ends asap
+        stop_broadcaster.send(()).unwrap();
+
         // Notify the end to UDS and log it
+        log::debug!("Notifying end to UDS");
         self.notify_end().await;
     }
 

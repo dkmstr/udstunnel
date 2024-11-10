@@ -18,9 +18,9 @@ use udstunnel::tunnel::{client::connect, consts};
 #[tokio::test]
 async fn test_server_open_command() {
     let config = fake::config::read().await;
-    let (server, reqs) = fake::tunnel_server::create(&config, true).await;
+    let server = fake::tunnel_server::TunnelServer::create(&config, true).await;
 
-    let reqs = reqs.unwrap(); // Expects always to be Some, or fails
+    let reqs = server.requests.clone().unwrap();
 
     // Let try to connect to the server
     let client = connect("localhost", config.listen_port, false).await;
@@ -58,11 +58,11 @@ async fn test_server_open_command() {
 
     server.abort();
 
-    match server.await {
+    match server.server_handle.await {
         Ok(_) => (),
         Err(e) => {
             // Should be a cancel error
-            assert_eq!(e.is_cancelled(), true);
+            panic!("Error: {:?}", e);
         }
     }
 }
@@ -70,7 +70,7 @@ async fn test_server_open_command() {
 #[tokio::test]
 async fn test_invalid_command() {
     let config = fake::config::read().await;
-    let (server, _) = fake::tunnel_server::create(&config, true).await;
+    let server = fake::tunnel_server::TunnelServer::create(&config, true).await;
 
     // Let try to connect to the server
     let client = connect("localhost", config.listen_port, false).await;
@@ -95,11 +95,10 @@ async fn test_invalid_command() {
 
     server.abort();
 
-    match server.await {
+    match server.server_handle.await {
         Ok(_) => (),
         Err(e) => {
-            // Should be a cancel error
-            assert_eq!(e.is_cancelled(), true);
+            panic!("Error: {:?}", e);
         }
     }
 }

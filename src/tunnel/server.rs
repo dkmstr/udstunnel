@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
+    sync::broadcast,
     time::timeout,
 };
 use tokio_rustls::{
@@ -42,7 +43,10 @@ impl TunnelServer {
         }
     }
 
-    pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn run(
+        self,
+        mut task_stopper: broadcast::Receiver<()>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let certs = CertificateDer::from_pem_file(self.config.ssl_certificate.clone()).unwrap();
         let private_key: PrivateKeyDer<'_> =
             PrivateKeyDer::from_pem_file(self.config.ssl_certificate_key.clone()).unwrap();
@@ -84,14 +88,36 @@ impl TunnelServer {
         log::info!("Tunnel server running on {}", address);
 
         let listener = TcpListener::bind(address).await?;
+
+        let stop_broadcaster = Arc::new(broadcast::channel::<()>(1).0);
+
+        // Task to watch for stop signal and relay it to stop_broadcaster
+        let child_stopper = stop_broadcaster.clone(); // To be moved to the task
+        tokio::spawn(async move {
+            task_stopper.recv().await.unwrap();
+            child_stopper.send(()).unwrap();
+        });
+
+        let mut listener_stopper = stop_broadcaster.subscribe();
         loop {
-            let (mut stream, _) = listener.accept().await?;
+            let mut stream;
+            tokio::select! {
+                _ = listener_stopper.recv() => {
+                    break;
+                }
+                listener = listener.accept() => {
+                    stream = listener?.0;
+                }
+            };
+
             let acceptor = tls_acceptor.clone();
             let tunnel_id = uuid::Uuid::new_v4().to_string()[..13].to_string();
             let src: String = stream.peer_addr().unwrap().to_string();
 
             let config = self.config.clone(); // Clone the config to move it to the task
             let udsapi = self.udsapi.clone();
+
+            let relay_stopper = stop_broadcaster.subscribe();
 
             let task = tokio::spawn(async move {
                 log::info!("CONNECTION ({tunnel_id}) from {src}");
@@ -138,7 +164,7 @@ impl TunnelServer {
                     types::Command::Open(ticket) => {
                         stream.write_all(ok_response).await.unwrap();
                         relay::RelayConnection::new(tunnel_id, ticket, udsapi.clone())
-                            .run(stream)
+                            .run(stream, relay_stopper)
                             .await;
                     }
                     types::Command::Test => {
@@ -173,6 +199,7 @@ impl TunnelServer {
 
             task.await?;
         }
+        Ok(())
     }
 
     async fn get_command(

@@ -8,6 +8,9 @@ use tokio::{self, task::JoinHandle};
 use udstunnel::tunnel::udsapi::UDSApiProvider;
 use udstunnel::tunnel::{config, server, udsapi};
 
+use super::remote::Remote;
+
+#[allow(dead_code)]
 pub struct Request {
     pub ticket: String,
     pub message: String,
@@ -16,12 +19,14 @@ pub struct Request {
 
 // Mock the UDSApiProvider trait
 pub struct UDSApiProviderMock {
+    port: u16,
     req: Arc<Mutex<Vec<Request>>>,
 }
 
 impl UDSApiProviderMock {
-    pub fn new() -> Self {
+    pub fn new(port: u16) -> Self {
         UDSApiProviderMock {
+            port,
             req: Arc::new(Mutex::new(Vec::new())),
         }
     }
@@ -49,57 +54,67 @@ impl UDSApiProvider for UDSApiProviderMock {
         );
 
         Ok(udsapi::UdsTicketResponse {
-            host: "localhost".to_string(),
-            port: 9999,
+            host: "[::1]".to_string(),
+            port: self.port,
             notify: "notify_012345678901234567890123456789012".to_string(),
         })
     }
 }
 
-/// Creates and starts a tunnel server.
-///
-/// This function creates a tunnel server using the provided configuration.
-/// If `override_provider` is `true`, it uses a mock `UDSApiProvider` for testing purposes.
-/// Otherwise, it uses the default `HttpUDSApiProvider`.
-///
-/// # Arguments
-///
-/// * `config` - A reference to the configuration for the tunnel server.
-/// * `override_provider` - A boolean indicating whether to use the mock `UDSApiProvider`.
-///
-/// # Returns
-///
-/// A tuple containing:
-/// * A `JoinHandle` for the spawned server task.
-/// * An optional `Arc<Mutex<Vec<String>>>` containing the request log if the mock provider is used.
 #[allow(dead_code)]
-pub async fn create(
-    config: &config::Config,
-    override_provider: bool,
-) -> (JoinHandle<()>, Option<Arc<Mutex<Vec<Request>>>>) {
-    let launch_config = config.clone();
-    let provider: Arc<dyn UDSApiProvider>;
-    let req;
-    if override_provider {
-        let mock = UDSApiProviderMock::new();
-        req = Some(mock.req.clone());
-        provider = Arc::new(mock);
-    } else {
-        provider = Arc::new(udsapi::HttpUDSApiProvider::new(&launch_config));
-        req = None;
-    }
-    let server = tokio::spawn(async move {
-        let mut tunnel = server::TunnelServer::new(&launch_config);
-        if override_provider {
-            tunnel = tunnel.with_provider(provider);
+pub struct TunnelServer {
+    pub requests: Option<Arc<Mutex<Vec<Request>>>>,
+    pub server_handle: JoinHandle<()>,
+    pub remote_handle: JoinHandle<()>,
+    pub stopper: tokio::sync::broadcast::Sender<()>,
+}
+
+#[allow(dead_code)]
+impl TunnelServer {
+    pub async fn create(config: &config::Config, mock_remotes: bool) -> TunnelServer {
+        let launch_config = config.clone();
+        let provider: Arc<dyn UDSApiProvider>;
+        let req;
+        let remote = Remote::new(None);
+        let remote_handle = remote.spawn();
+
+        let stopper = tokio::sync::broadcast::channel(1).0;
+
+        if mock_remotes {
+            // Crate a fake remote, and use it also on mock provider
+            let mock = UDSApiProviderMock::new(remote.port);
+            req = Some(mock.req.clone());
+            provider = Arc::new(mock);
+        } else {
+            provider = Arc::new(udsapi::HttpUDSApiProvider::new(&launch_config));
+            req = None;
         }
-        let result = tunnel.run().await;
-        assert!(result.is_ok());
-    });
+        let task_provider = provider.clone();
+        let server_stopper = stopper.subscribe();
+        let server_handle = tokio::spawn(async move {
+            let mut tunnel = server::TunnelServer::new(&launch_config);
+            if mock_remotes {
+                tunnel = tunnel.with_provider(task_provider);
+            }
+            let result = tunnel.run(server_stopper).await;
+            assert!(result.is_ok());
+        });
 
-    // Should be listening on configure port, let's wait a bit to
-    // allow tokio to start the server
-    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        // Should be listening on configure port, let's wait a bit to
+        // allow tokio to start the server
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
-    (server, req)
+        TunnelServer {
+            requests: req,
+            remote_handle,
+            server_handle,
+            stopper,
+        }
+    }
+
+    pub fn abort(&self) {
+        self.stopper.send(()).unwrap();
+        // The remote need to be aborted too, but using abort, it's for testing
+        self.remote_handle.abort();
+    }
 }
