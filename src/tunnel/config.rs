@@ -28,7 +28,7 @@ use std::time::Duration;
 /// # Example
 ///
 /// ```rust
-/// use udstunnel::config::ConfigLoader;
+/// use udstunnel::tunnel::config::ConfigLoader;
 /// let config = ConfigLoader::new()
 ///     .with_filename("custom_config.conf".into())
 ///     .with_uds_server("https://example.com/uds".into())

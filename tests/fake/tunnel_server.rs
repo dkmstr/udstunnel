@@ -2,12 +2,14 @@ extern crate udstunnel;
 
 use tokio::{self, task::JoinHandle};
 
-use udstunnel::{config, tunnel::server::run};
+use udstunnel::tunnel::{config, server};
 
+#[allow(dead_code)] // For some reason, thinks that this function is not used (maybe because it's used in tests only)
 pub async fn create(config: &config::Config) -> JoinHandle<()> {
     let launch_config = config.clone();
     let server = tokio::spawn(async move {
-        let result = run(launch_config).await;
+        let server = server::TunnelServer::new(&launch_config);
+        let result = server.run().await;
         assert!(result.is_ok());
     });
 

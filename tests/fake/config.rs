@@ -1,8 +1,9 @@
 extern crate udstunnel;
 use tokio::net::TcpListener;
 
-use udstunnel::{config, tunnel};
+use udstunnel::tunnel::{self, config};
 
+#[allow(dead_code)]  // For some reason, thinks that this function is not used (maybe because it's used in tests only)
 pub async fn read() -> config::Config {
     let mut config = config::ConfigLoader::new()
         .with_filename("tests/udstunnel.conf")

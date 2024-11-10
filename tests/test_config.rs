@@ -1,6 +1,6 @@
 extern crate udstunnel;
 
-use udstunnel::config::ConfigLoader;
+use udstunnel::tunnel::config::ConfigLoader;
 mod fake;
 
 #[cfg(test)]

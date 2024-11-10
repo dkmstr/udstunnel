@@ -4,14 +4,14 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     task::JoinHandle,
 };
-use udstunnel::config::Config;
+use udstunnel::tunnel::config::Config;
 
 const HOST: &str = "localhost";
 const PORT: &str = "9999";
 // 40 chars
 const NOTIFY_TICKET: &str = "notify_012345678901234567890123456789012";
 
-pub async fn broker_http_server(config: Config) -> () {
+async fn broker_http_server(config: Config) -> () {
     let host = config.uds_server.clone();
     // Should be http://host[:port]/uds/rest/tunnel/ticket for testing, we will not use ssl
     // Skip the http://
@@ -47,10 +47,17 @@ pub async fn broker_http_server(config: Config) -> () {
             "{{\"host\": \"{}\", \"port\": \"{}\", \"ticket\": \"{}\"}}",
             HOST, PORT, NOTIFY_TICKET
         );
+        let content_length = response.len();
+        let content_length = format!("Content-Length: {}\r\n", content_length);
+        // Send the response
+        stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n").await.unwrap();
+        stream.write_all(content_length.as_bytes()).await.unwrap();
+        stream.write_all(b"\r\n").await.unwrap();
         stream.write_all(response.as_bytes()).await.unwrap();
     }
 }
 
+#[allow(dead_code)] // For some reason, thinks that this function is not used (maybe because it's used in tests only)
 pub async fn create(config: &Config) -> JoinHandle<()> {
     tokio::spawn(broker_http_server(config.clone()))
 }

@@ -4,6 +4,7 @@ pub mod error;
 pub mod server;
 pub mod types;
 pub mod log;
+pub mod config;
 
 mod relay;
 mod udsapi;

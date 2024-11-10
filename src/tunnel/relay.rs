@@ -1,30 +1,28 @@
-use std::io;
+use std::{io, sync::Arc};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
 };
 use tokio_rustls::server::TlsStream;
 
-use crate::config;
-
 use super::udsapi;
 
-pub struct RelayConnection<'a> {
+pub struct RelayConnection {
     pub tunnel_id: String,
     pub ticket: String,
-    pub config: &'a config::Config,
+    pub udsapi: Arc<dyn udsapi::UDSApiProvider>,
 
     pub src: String, // Source IP/Port
     pub dst: String, // Destination IP/Port
     pub notify_ticket: String,
 }
 
-impl<'a> RelayConnection<'a> {
-    pub fn new(tunnel_id: String, ticket: String, config: &'a config::Config) -> Self {
+impl RelayConnection {
+    pub fn new(tunnel_id: String, ticket: String, udsapi: Arc<dyn udsapi::UDSApiProvider>) -> Self {
         Self {
             tunnel_id,
             ticket,
-            config,
+            udsapi,
             src: String::new(),
             dst: String::new(),
             notify_ticket: String::new(),
@@ -33,7 +31,7 @@ impl<'a> RelayConnection<'a> {
 
     pub(crate) async fn run(
         &mut self,
-        client_stream: TlsStream<TcpStream>, // move value
+        mut client_stream: TlsStream<TcpStream>, // move value
     ) -> () {
         // 1.- Try to get the ticket from UDS Server
         // 2.- If ticket is not found, log the error and return (caller will close the connection)
@@ -44,14 +42,27 @@ impl<'a> RelayConnection<'a> {
         self.src = format!("{}:{}", src_peer_addr.ip(), src_peer_addr.port());
 
         let uds_response;
-        if let Ok(response) =
-            udsapi::request_from_uds(&self.config, &self.ticket, &self.src, None).await
+        if let Ok(response) = self
+            .udsapi
+            .request(&self.ticket, &self.src, None)
+            .await
         {
             uds_response = response;
             log::debug!("UDS Response: {:?}", uds_response);
         } else {
             log::error!("Error requesting UDS");
             return;
+        }
+
+        // If host starts with #, it's a command, process it and return
+        if uds_response.host.starts_with('#') {
+            log::debug!("Command received: {}", uds_response.host);
+            if let Some(response) = self.execute_command(&uds_response.host).await {
+                log::debug!("Command response: {}", response);
+                client_stream.write_all(response.as_bytes()).await.unwrap();
+                client_stream.shutdown().await.unwrap();
+                return;
+            }
         }
 
         self.dst = format!("{}:{}", uds_response.host, uds_response.port);
@@ -145,8 +156,7 @@ impl<'a> RelayConnection<'a> {
                 //self.stats_manager.elapsed_time,
             );
             let query_params = format!("sent={}&recv={}", 0u64, 0u64);
-            let _ = udsapi::request_from_uds(
-                &self.config,
+            let _ = self.udsapi.request(
                 &self.notify_ticket,
                 "stop",
                 Some(&query_params),
@@ -159,5 +169,23 @@ impl<'a> RelayConnection<'a> {
 
         // self.stats_manager.close();
         // self.owner.finished.set();
+    }
+
+    async fn execute_command(&self, command: &str) -> Option<String> {
+        let command = command.trim_start_matches('#');
+        match command {
+            "close" => None,
+            _ => {
+                log::info!("Command received: {}", command);
+                None
+            }
+        }
+        // Execute the command
+        // let output = Command::new("sh")
+        //     .arg("-c")
+        //     .arg(command)
+        //     .output()
+        //     .expect("failed to execute process");
+        // log::info!("Command output: {}", String::from_utf8_lossy(&output.stdout));
     }
 }
