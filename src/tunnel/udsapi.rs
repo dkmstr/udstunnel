@@ -14,7 +14,7 @@ pub struct UdsTicketResponse {
 }
 
 #[async_trait]
-pub trait UDSApiProvider: Send + Sync + fmt::Debug {
+pub trait UDSApiProvider: Send + Sync {
     async fn request(
         &self,
         ticket: &str,

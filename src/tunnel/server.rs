@@ -21,7 +21,6 @@ use crate::tunnel::{relay, types};
 use super::{config, consts, udsapi};
 use crate::tls;
 
-#[derive(Debug)]
 pub struct TunnelServer {
     pub udsapi: Arc<dyn udsapi::UDSApiProvider>,
     pub config: config::Config,

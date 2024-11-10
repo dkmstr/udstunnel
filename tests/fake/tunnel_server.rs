@@ -8,7 +8,6 @@ use tokio::{self, task::JoinHandle};
 use udstunnel::tunnel::udsapi::UDSApiProvider;
 use udstunnel::tunnel::{config, server, udsapi};
 
-#[derive(Debug)]
 pub struct Request {
     pub ticket: String,
     pub message: String,
@@ -16,7 +15,6 @@ pub struct Request {
 }
 
 // Mock the UDSApiProvider trait
-#[derive(Debug)]
 pub struct UDSApiProviderMock {
     req: Arc<Mutex<Vec<Request>>>,
 }
