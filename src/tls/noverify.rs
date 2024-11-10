@@ -1,5 +1,5 @@
-use tokio_rustls::rustls::{client::danger::ServerCertVerifier, pki_types::CertificateDer};
 use log::debug;
+use tokio_rustls::rustls::{client::danger::ServerCertVerifier, pki_types::CertificateDer};
 
 #[derive(Debug)]
 pub struct NoVerifySsl;
@@ -20,11 +20,11 @@ impl ServerCertVerifier for NoVerifySsl {
         _now: rustls::pki_types::UnixTime,
     ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
         debug!("Skipping server verification");
-        debug!("End entity: {:?}", _end_entity);
-        debug!("Intermediates: {:?}", _intermediates);
-        debug!("Server name: {:?}", _server_name);
-        debug!("OCSP response: {:?}", _ocsp_response);
-        debug!("Now: {:?}", _now);
+        // debug!("End entity: {:?}", _end_entity);
+        // debug!("Intermediates: {:?}", _intermediates);
+        // debug!("Server name: {:?}", _server_name);
+        // debug!("OCSP response: {:?}", _ocsp_response);
+        // debug!("Now: {:?}", _now);
         Ok(rustls::client::danger::ServerCertVerified::assertion())
     }
 
@@ -35,9 +35,9 @@ impl ServerCertVerifier for NoVerifySsl {
         _dss: &rustls::DigitallySignedStruct,
     ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
         debug!("Skipping TLS 1.2 signature verification");
-        debug!("Message: {:?}", _message);
-        debug!("Cert: {:?}", _cert);
-        debug!("DSS: {:?}", _dss);
+        // debug!("Message: {:?}", _message);
+        // debug!("Cert: {:?}", _cert);
+        // debug!("DSS: {:?}", _dss);
         Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
     }
 
@@ -48,9 +48,9 @@ impl ServerCertVerifier for NoVerifySsl {
         _dss: &rustls::DigitallySignedStruct,
     ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
         debug!("Skipping TLS 1.3 signature verification");
-        debug!("Message: {:?}", _message);
-        debug!("Cert: {:?}", _cert);
-        debug!("DSS: {:?}", _dss);
+        // debug!("Message: {:?}", _message);
+        // debug!("Cert: {:?}", _cert);
+        // debug!("DSS: {:?}", _dss);
         Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
     }
 

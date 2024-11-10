@@ -18,9 +18,9 @@ use tokio::{
 use udstunnel::tunnel::{client::connect, consts};
 
 #[tokio::test]
-async fn test_launch_listens() {
+async fn test_server_listens() {
     let config = fake::config::read().await;
-    let server = fake::tunnel_server::create(&config).await;
+    let (server, _) = fake::tunnel_server::create(&config, true).await;
 
     // Check it's listening...
     match timeout(
@@ -37,11 +37,6 @@ async fn test_launch_listens() {
         }
     }
 
-    // // Let try to connect to the server
-    // let client = connect("localhost", 4443, false).await;
-    // assert!(client.is_ok());
-    // client.unwrap().shutdown().await.unwrap();
-
     server.abort();
 
     match server.await {
@@ -54,9 +49,9 @@ async fn test_launch_listens() {
 }
 
 #[tokio::test]
-async fn test_launch_handshake() {
+async fn test_server_handshake() {
     let config = fake::config::read().await;
-    let server = fake::tunnel_server::create(&config).await;
+    let (server, _) = fake::tunnel_server::create(&config, true).await;
 
     // Let try to connect to the server
     let client = connect("localhost", config.listen_port, false).await;
@@ -77,9 +72,9 @@ async fn test_launch_handshake() {
 }
 
 #[tokio::test]
-async fn test_launch_handshake_timeout() {
+async fn test_server_handshake_timeout() {
     let config = fake::config::read().await;
-    let server = fake::tunnel_server::create(&config).await;
+    let (server, _) = fake::tunnel_server::create(&config, true).await;
 
     // Let try to connect to the server
     // Check it's listening...

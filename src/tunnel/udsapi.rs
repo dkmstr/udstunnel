@@ -12,6 +12,7 @@ pub struct UdsTicketResponse {
     pub port: u16,
     pub notify: String,
 }
+
 #[async_trait]
 pub trait UDSApiProvider: Send + Sync + fmt::Debug {
     async fn request(
@@ -20,6 +21,28 @@ pub trait UDSApiProvider: Send + Sync + fmt::Debug {
         message: &str,
         query_params: Option<&str>,
     ) -> Result<UdsTicketResponse, std::io::Error>;
+
+    async fn get_ticket(
+        &self,
+        ticket: &str,
+        ip: &str,
+    ) -> Result<UdsTicketResponse, std::io::Error> {
+        self.request(ticket, &ip, None).await
+    }
+
+    async fn notify_end(
+        &self,
+        ticket: &str,
+        sent: u64,
+        recv: u64,
+    ) -> Result<UdsTicketResponse, std::io::Error> {
+        self.request(
+            ticket,
+            "stop",
+            Some(format!("sent={}&recv={}", sent, recv).as_str()),
+        )
+        .await
+    }
 }
 
 #[derive(Clone, Debug)]

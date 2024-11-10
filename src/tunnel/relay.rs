@@ -39,14 +39,15 @@ impl RelayConnection {
         // { 'host': '....', 'port': '....', 'notify': '....' }
         // Where host it te host to connect, port is the port to connect and notify is the UDS ticket used to notification
         let src_peer_addr = client_stream.get_ref().0.peer_addr().unwrap();
-        self.src = format!("{}:{}", src_peer_addr.ip(), src_peer_addr.port());
+
+        if src_peer_addr.ip().to_string().contains(':') {
+            self.src = format!("[{}]:{}", src_peer_addr.ip(), src_peer_addr.port());
+        } else {
+            self.src = format!("{}:{}", src_peer_addr.ip(), src_peer_addr.port());
+        }
 
         let uds_response;
-        if let Ok(response) = self
-            .udsapi
-            .request(&self.ticket, &self.src, None)
-            .await
-        {
+        if let Ok(response) = self.udsapi.get_ticket(&self.ticket, &self.src).await {
             uds_response = response;
             log::debug!("UDS Response: {:?}", uds_response);
         } else {
@@ -155,13 +156,8 @@ impl RelayConnection {
                 //self.stats_manager.local.recv,
                 //self.stats_manager.elapsed_time,
             );
-            let query_params = format!("sent={}&recv={}", 0u64, 0u64);
-            let _ = self.udsapi.request(
-                &self.notify_ticket,
-                "stop",
-                Some(&query_params),
-            )
-            .await;
+            // Send the notification to UDS
+            let _ = self.udsapi.notify_end(&self.ticket, 0, 0).await;
             self.notify_ticket.clear(); // Clean up so no more notifications
         } else {
             log::info!("TERMINATED ({}) {}", self.tunnel_id, self.src);

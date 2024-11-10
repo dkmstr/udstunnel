@@ -2,7 +2,7 @@ use log;
 use std::sync::Arc;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpListener,
+    net::{TcpListener, TcpStream},
     time::timeout,
 };
 use tokio_rustls::{
@@ -11,6 +11,7 @@ use tokio_rustls::{
         version::{TLS12, TLS13},
         ServerConfig,
     },
+    server::TlsStream,
     TlsAcceptor,
 };
 use uuid;
@@ -120,82 +121,103 @@ impl TunnelServer {
                 // 2.- Upgrade the connection to TLS
                 let mut stream = acceptor.accept(stream).await.unwrap();
 
-                // Read the command, with timeout (config.command_timeout)
-                let mut buf = [0u8; consts::COMMAND_LENGTH];
-                let command =
-                    match timeout(config.command_timeout, stream.read_exact(&mut buf)).await {
-                        Ok(command) => command,
-                        Err(e) => Err(std::io::Error::new(std::io::ErrorKind::TimedOut, e)),
-                    };
+                let command = match TunnelServer::get_command(
+                    &mut stream,
+                    &src,
+                    config.command_timeout,
+                    &tunnel_id,
+                )
+                .await
+                {
+                    None => return,
+                    Some(command) => command,
+                };
 
-                // Check command result
-                if command.is_err() {
-                    let is_timeout =
-                        log_error(command.err(), &buf, &tunnel_id, &src, "COMMAND").await;
-                    if is_timeout {
-                        stream
-                            .write_all(types::Response::TimeoutError.to_bytes())
-                            .await
-                            .unwrap();
-                    } else {
+                let ok_response = types::Response::Ok.to_bytes();
+
+                match command {
+                    types::Command::Open(ticket) => {
+                        stream.write_all(ok_response).await.unwrap();
+                        relay::RelayConnection::new(tunnel_id, ticket, udsapi.clone())
+                            .run(stream)
+                            .await;
+                    }
+                    types::Command::Test => {
+                        log::info!("TEST ({tunnel_id}) from {src}");
+                        stream.write_all(ok_response).await.unwrap();
+                        // Returns and closes the connection
+                        stream.shutdown().await.unwrap();
+                    }
+                    // Stat and info are only allowed from config.allow sources (list of ips, no networks)
+                    types::Command::Stat => {
+                        log::info!("STAT ({tunnel_id}) from {src}");
+                        stream.write_all(ok_response).await.unwrap();
+                        // TODO: Return stats
+                        stream.shutdown().await.unwrap();
+                    }
+                    types::Command::Info => {
+                        log::info!("INFO ({tunnel_id}) from {src}");
+                        stream.write_all(ok_response).await.unwrap();
+                        // TODO: Return info
+                        stream.shutdown().await.unwrap();
+                    }
+                    types::Command::Unknown => {
+                        log_error(None, &buf, &tunnel_id, &src, "COMMAND").await;
                         stream
                             .write_all(types::Response::CommandError.to_bytes())
                             .await
                             .unwrap();
+                        stream.shutdown().await.unwrap();
                     }
-                    stream.shutdown().await.unwrap();
-                    return; // End the task
-                }
-
-                if let Some(command) = types::Command::from_bytes(&buf) {
-                    log::info!("COMMAND ({tunnel_id}) {command} from {src}");
-                    const OK_RESPONSE: types::Response = types::Response::Ok;
-
-                    match command {
-                        types::Command::Open(ticket) => {
-                            stream.write_all(OK_RESPONSE.to_bytes()).await.unwrap();
-                            relay::RelayConnection::new(tunnel_id, ticket, udsapi.clone())
-                                .run(stream)
-                                .await;
-                        }
-                        types::Command::Test => {
-                            log::info!("TEST ({tunnel_id}) from {src}");
-                            stream.write_all(OK_RESPONSE.to_bytes()).await.unwrap();
-                            // Returns and closes the connection
-                            stream.shutdown().await.unwrap();
-                        }
-                        // Stat and info are only allowed from config.allow sources (list of ips, no networks)
-                        types::Command::Stat => {
-                            log::info!("STAT ({tunnel_id}) from {src}");
-                            stream.write_all(OK_RESPONSE.to_bytes()).await.unwrap();
-                            // TODO: Return stats
-                            stream.shutdown().await.unwrap();
-                        }
-                        types::Command::Info => {
-                            log::info!("INFO ({tunnel_id}) from {src}");
-                            stream.write_all(OK_RESPONSE.to_bytes()).await.unwrap();
-                            // TODO: Return info
-                            stream.shutdown().await.unwrap();
-                        }
-                        types::Command::Unknown => {
-                            log_error(None, &buf, &tunnel_id, &src, "COMMAND").await;
-                            stream
-                                .write_all(types::Response::CommandError.to_bytes())
-                                .await
-                                .unwrap();
-                            stream.shutdown().await.unwrap();
-                        }
-                    }
-                } else {
-                    let hex = to_hex(&buf);
-                    log_error(command.err(), &buf, &tunnel_id, &src, "COMMAND").await;
-                    log::error!("COMMAND ({tunnel_id}) invalid from {src}: {hex}");
-                    let response = types::Response::CommandError;
-                    stream.write_all(response.to_bytes()).await.unwrap();
                 }
             });
 
             task.await?;
+        }
+    }
+
+    async fn get_command(
+        stream: &mut TlsStream<TcpStream>,
+        src: &str,
+        command_timeout: std::time::Duration,
+        tunnel_id: &str,
+    ) -> Option<types::Command> {
+        // Read the command, with timeout (config.command_timeout)
+        let mut buf = [0u8; consts::COMMAND_LENGTH + consts::TICKET_LENGTH];
+        let command = match timeout(command_timeout, stream.read(&mut buf)).await {
+            Ok(command) => command,
+            Err(e) => Err(std::io::Error::new(std::io::ErrorKind::TimedOut, e)),
+        };
+
+        // Check command result
+        if command.is_err() {
+            let is_timeout = log_error(command.err(), &buf, &tunnel_id, &src, "COMMAND").await;
+            if is_timeout {
+                stream
+                    .write_all(types::Response::TimeoutError.to_bytes())
+                    .await
+                    .unwrap();
+            } else {
+                stream
+                    .write_all(types::Response::CommandError.to_bytes())
+                    .await
+                    .unwrap();
+            }
+            stream.shutdown().await.unwrap();
+            return None;
+        }
+
+        if let Some(command) = types::Command::from_bytes(&buf) {
+            log::info!("COMMAND ({tunnel_id}) {command} from {src}");
+            Some(command)
+        } else {
+            let hex = to_hex(&buf);
+            log_error(command.err(), &buf, &tunnel_id, &src, "COMMAND").await;
+            log::error!("COMMAND ({tunnel_id}) invalid from {src}: {hex}");
+            let response = types::Response::CommandError;
+            stream.write_all(response.to_bytes()).await.unwrap();
+            stream.shutdown().await.unwrap();
+            None
         }
     }
 }
