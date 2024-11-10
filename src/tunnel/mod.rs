@@ -1,10 +1,10 @@
 pub mod client;
+pub mod config;
 pub mod consts;
 pub mod error;
+pub mod log;
 pub mod server;
 pub mod types;
-pub mod log;
-pub mod config;
 
-mod relay;
-mod udsapi;
+pub mod relay;
+pub mod udsapi;
