@@ -94,8 +94,8 @@ impl TunnelServer {
         // Task to watch for stop signal and relay it to stop_broadcaster
         let child_stopper = stop_broadcaster.clone(); // To be moved to the task
         tokio::spawn(async move {
-            task_stopper.recv().await.unwrap();
-            child_stopper.send(()).unwrap();
+            let _ = task_stopper.recv().await;
+            let _ = child_stopper.send(());
         });
 
         let mut listener_stopper = stop_broadcaster.subscribe();
@@ -191,8 +191,9 @@ impl TunnelServer {
                         stream
                             .write_all(types::Response::CommandError.to_bytes())
                             .await
-                            .unwrap();
-                        stream.shutdown().await.unwrap();
+                            .unwrap_or_default();
+                            
+                        stream.shutdown().await.unwrap_or_default();  // Ignore error
                     }
                 }
             });

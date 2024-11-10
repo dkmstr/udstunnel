@@ -43,7 +43,7 @@ async fn test_server_listens() {
         Ok(_) => (),
         Err(e) => {
             // Should be a cancel error
-            assert_eq!(e.is_cancelled(), true);
+            panic!("Error: {:?}", e);
         }
     }
 }
@@ -58,6 +58,8 @@ async fn test_server_handshake() {
     // Note that connect already sends a handshake message
     assert!(client.is_ok());
 
+    // Server expects a command, but no command will be isued.
+    // Should work anyway
     client.unwrap().shutdown().await.unwrap();
 
     server.abort();
@@ -66,7 +68,7 @@ async fn test_server_handshake() {
         Ok(_) => (),
         Err(e) => {
             // Should be a cancel error
-            assert_eq!(e.is_cancelled(), true);
+            panic!("Error: {:?}", e);
         }
     }
 }
@@ -108,7 +110,7 @@ async fn test_server_handshake_timeout() {
         Ok(_) => (),
         Err(e) => {
             // Should be a cancel error
-            assert_eq!(e.is_cancelled(), true);
+            panic!("Error: {:?}", e);
         }
     }
 }
