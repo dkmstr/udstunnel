@@ -135,9 +135,7 @@ impl TunnelServer {
                 if handshake.is_err() || buf != consts::HANDSHAKE_V1 {
                     // If it's not a timeout, log the error
                     log_error(handshake.err(), &buf, &tunnel_id, &src, "HANDSHAKE").await;
-                    stream.shutdown().await.unwrap_or_else(|e| {
-                        log::warn!("Could not shutdown stream: {:?}", e);
-                    });
+                    stream.shutdown().await.unwrap_or_default();  // Ignore error
                     return;
                 }
 

@@ -40,7 +40,19 @@ impl RelayConnection {
         // 3.- If ticket is found, we will receive (json):
         // { 'host': '....', 'port': '....', 'notify': '....' }
         // Where host it te host to connect, port is the port to connect and notify is the UDS ticket used to notification
-        let src_peer_addr = client_stream.get_ref().0.peer_addr().unwrap();
+        let src_peer_addr =
+            client_stream
+                .get_ref()
+                .0
+                .peer_addr()
+                .unwrap_or(std::net::SocketAddr::new(
+                    std::net::IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0)),
+                    0,
+                ));
+        if src_peer_addr.ip().is_unspecified() {
+            log::error!("Error getting peer address!");
+            return;
+        }
 
         if src_peer_addr.ip().to_string().contains(':') {
             self.src = format!("[{}]:{}", src_peer_addr.ip(), src_peer_addr.port());
@@ -62,8 +74,12 @@ impl RelayConnection {
             log::debug!("Command received: {}", uds_response.host);
             if let Some(response) = self.execute_command(&uds_response.host).await {
                 log::debug!("Command response: {}", response);
-                client_stream.write_all(response.as_bytes()).await.unwrap();
-                client_stream.shutdown().await.unwrap();
+                // Ignore errors, we are closing the connection
+                client_stream
+                    .write_all(response.as_bytes())
+                    .await
+                    .unwrap_or_default();
+                client_stream.shutdown().await.unwrap_or_default();
                 return;
             }
         }
@@ -115,14 +131,19 @@ impl RelayConnection {
                                 break;
                             }
                             Ok(n) => {
-                                client_writer.write_all(&buf[..n]).await.unwrap();
+                                let mut error: Option<()> = None;
+                                client_writer.write_all(&buf[..n]).await.unwrap_or_else(|_| error = Some(()));
+                                if error.is_some() {
+                                    log::error!("ERROR writing to client");
+                                    break;
+                                }
                             }
                             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                                 continue;
                             }
                             Err(e) => {
                                 // Last one, move value
-                                println!("Error reading from relay: {:?}", e);
+                                log::error!("ERROR from server: {:?}", e);
                                 break;
                             }
                         }
@@ -149,14 +170,19 @@ impl RelayConnection {
                                 break;
                             }
                             Ok(n) => {
-                                server_writer.write_all(&buf[..n]).await.unwrap();
+                                let mut error: Option<()> = None;
+                                server_writer.write_all(&buf[..n]).await.unwrap_or_else(|_| error = Some(()));
+                                if error.is_some() {
+                                    log::error!("ERROR writing to server");
+                                    break;
+                                }
                             }
                             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                                 continue;
                             }
                             Err(e) => {
                                 // Last one, move value
-                                println!("Error reading from relay: {:?}", e);
+                                log::error!("ERROR from client: {:?}", e);
                                 break;
                             }
                         }
