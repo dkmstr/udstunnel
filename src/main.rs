@@ -1,9 +1,8 @@
 use log::{debug, info};
 
-use tokio::sync::broadcast;
 use udstunnel::tunnel::{self, consts};
 
-use udstunnel::tunnel::{server, config};
+use udstunnel::tunnel::{server, config, event};
 
 use clap;
 
@@ -75,9 +74,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if tunnel {
         let tunnel = server::TunnelServer::new(&config);
 
-        let stopper = broadcast::channel(1).0;
+        let stop_event = event::Event::new();
 
-        match tunnel.run(stopper.subscribe()).await {
+        match tunnel.run(stop_event.clone()).await {
             Ok(_) => {
                 info!("Tunnel server started");
             }

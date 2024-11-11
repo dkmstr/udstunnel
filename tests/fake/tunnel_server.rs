@@ -6,7 +6,7 @@ use log;
 use tokio::{self, task::JoinHandle};
 
 use udstunnel::tunnel::udsapi::UDSApiProvider;
-use udstunnel::tunnel::{config, server, udsapi};
+use udstunnel::tunnel::{config, event, server, udsapi};
 
 use super::remote::Remote;
 
@@ -66,7 +66,7 @@ pub struct TunnelServer {
     pub requests: Option<Arc<Mutex<Vec<Request>>>>,
     pub server_handle: JoinHandle<()>,
     pub remote_handle: JoinHandle<()>,
-    pub stopper: tokio::sync::broadcast::Sender<()>,
+    pub stopper: event::Event,
 }
 
 #[allow(dead_code)]
@@ -78,8 +78,6 @@ impl TunnelServer {
         let remote = Remote::new(None);
         let remote_handle = remote.spawn();
 
-        let stopper = tokio::sync::broadcast::channel(1).0;
-
         if mock_remotes {
             // Crate a fake remote, and use it also on mock provider
             let mock = UDSApiProviderMock::new(remote.port);
@@ -90,13 +88,14 @@ impl TunnelServer {
             req = None;
         }
         let task_provider = provider.clone();
-        let server_stopper = stopper.subscribe();
+        let stopper = event::Event::new();
+        let task_stopper = stopper.clone();
         let server_handle = tokio::spawn(async move {
             let mut tunnel = server::TunnelServer::new(&launch_config);
             if mock_remotes {
                 tunnel = tunnel.with_provider(task_provider);
             }
-            let result = tunnel.run(server_stopper).await;
+            let result = tunnel.run(task_stopper).await;
             assert!(result.is_ok());
         });
 
@@ -113,7 +112,7 @@ impl TunnelServer {
     }
 
     pub fn abort(&self) {
-        self.stopper.send(()).unwrap();
+        self.stopper.set();
         // The remote need to be aborted too, but using abort, it's for testing
         self.remote_handle.abort();
     }

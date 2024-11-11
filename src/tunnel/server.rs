@@ -3,7 +3,6 @@ use std::sync::Arc;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
-    sync::broadcast,
     time::timeout,
 };
 use tokio_rustls::{
@@ -19,7 +18,7 @@ use uuid;
 
 use crate::tunnel::{relay, types};
 
-use super::{config, consts, udsapi};
+use super::{config, consts, udsapi, event};
 use crate::tls;
 
 pub struct TunnelServer {
@@ -45,7 +44,7 @@ impl TunnelServer {
 
     pub async fn run(
         self,
-        mut task_stopper: broadcast::Receiver<()>,
+        stop_event: event::Event,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let certs = CertificateDer::from_pem_file(self.config.ssl_certificate.clone()).unwrap();
         let private_key: PrivateKeyDer<'_> =
@@ -89,20 +88,11 @@ impl TunnelServer {
 
         let listener = TcpListener::bind(address).await?;
 
-        let stop_broadcaster = Arc::new(broadcast::channel::<()>(1).0);
-
-        // Task to watch for stop signal and relay it to stop_broadcaster
-        let child_stopper = stop_broadcaster.clone(); // To be moved to the task
-        tokio::spawn(async move {
-            let _ = task_stopper.recv().await;
-            let _ = child_stopper.send(());
-        });
-
-        let mut listener_stopper = stop_broadcaster.subscribe();
         loop {
             let mut stream;
+            let check_stop_event = stop_event.clone();
             tokio::select! {
-                _ = listener_stopper.recv() => {
+                _ = check_stop_event => {
                     break;
                 }
                 listener = listener.accept() => {
@@ -117,8 +107,7 @@ impl TunnelServer {
             let config = self.config.clone(); // Clone the config to move it to the task
             let udsapi = self.udsapi.clone();
 
-            let relay_stopper = stop_broadcaster.subscribe();
-
+            let relay_stop_event = stop_event.clone();
             let task = tokio::spawn(async move {
                 log::info!("CONNECTION ({tunnel_id}) from {src}");
 
@@ -162,7 +151,7 @@ impl TunnelServer {
                     types::Command::Open(ticket) => {
                         stream.write_all(ok_response).await.unwrap();
                         relay::RelayConnection::new(tunnel_id, ticket, udsapi.clone())
-                            .run(stream, relay_stopper)
+                            .run(stream, relay_stop_event.clone())
                             .await;
                     }
                     types::Command::Test => {

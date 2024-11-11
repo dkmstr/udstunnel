@@ -2,11 +2,10 @@ use std::{io, sync::Arc};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
-    sync::broadcast,
 };
 use tokio_rustls::server::TlsStream;
 
-use super::udsapi;
+use super::{udsapi, event};
 
 pub struct RelayConnection {
     pub tunnel_id: String,
@@ -33,7 +32,7 @@ impl RelayConnection {
     pub(crate) async fn run(
         &mut self,
         mut client_stream: TlsStream<TcpStream>, // move value
-        mut task_stopper: broadcast::Receiver<()>,
+        stop_event: event::Event,
     ) -> () {
         // 1.- Try to get the ticket from UDS Server
         // 2.- If ticket is not found, log the error and return (caller will close the connection)
@@ -104,24 +103,16 @@ impl RelayConnection {
         // Split the client stream into reader and writer
         let (mut client_reader, mut client_writer) = tokio::io::split(client_stream);
 
-        let stop_broadcaster = Arc::new(broadcast::channel::<()>(1).0);
-
-        // Task to watch for stop signal and relay it to stop_broadcaster
-        let child_stopper = stop_broadcaster.clone(); // To be moved to the task
-        tokio::spawn(async move {
-            let _ = task_stopper.recv().await;
-            let _ = child_stopper.send(());
-        });
-
-        let mut server_to_client_stopper = stop_broadcaster.subscribe();
+        let server_to_client_stopper = stop_event.clone();
         let server_to_client = tokio::task::spawn(async move {
             // Using a buf on heap so transfer between tasks is faster
             // Only need to transfer the pointer, not the data as in the case of [u8; 1024]
             let mut buf = vec![0; 1024];
             log::debug!("Starting server_to_client task");
             loop {
+                let inner_stop_event = server_to_client_stopper.clone();
                 tokio::select! {
-                    _ = server_to_client_stopper.recv() => {
+                    _ = inner_stop_event => {
                         log::debug!("Stopping server_to_client task");
                         break;
                     }
@@ -152,15 +143,16 @@ impl RelayConnection {
             }
         });
 
-        let mut client_to_server_stopper = stop_broadcaster.subscribe();
+        let client_to_server_stopper = stop_event.clone();
         let client_to_server = tokio::task::spawn(async move {
             // Using a buf on heap so transfer between tasks is faster
             // Only need to transfer the pointer, not the data as in the case of [u8; 1024]
             let mut buf = vec![0; 1024];
             log::debug!("Starting client_to_server task");
             loop {
+                let inner_stop_event = client_to_server_stopper.clone();
                 tokio::select! {
-                    _ = client_to_server_stopper.recv() => {
+                    _ = inner_stop_event => {
                         log::debug!("Stopping client_to_server task");
                         break;
                     }
@@ -204,9 +196,6 @@ impl RelayConnection {
         // As soon as one or the tasks is completed, the connection will be closed
         // Ant the other task will be cancelled
         // because the streams halves will get out of scope, so they will be dropped
-
-        // Ensure other task ends asap
-        stop_broadcaster.send(()).unwrap();
 
         // Notify the end to UDS and log it
         log::debug!("Notifying end to UDS");
