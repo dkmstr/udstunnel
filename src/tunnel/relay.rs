@@ -5,7 +5,7 @@ use tokio::{
 };
 use tokio_rustls::server::TlsStream;
 
-use super::{udsapi, event};
+use super::{event, stats, types, udsapi};
 
 pub struct RelayConnection {
     pub tunnel_id: String,
@@ -15,10 +15,18 @@ pub struct RelayConnection {
     pub src: String, // Source IP/Port
     pub dst: String, // Destination IP/Port
     pub notify_ticket: String,
+
+    pub global_stats: Arc<stats::Stats>,
+    pub local_stats: Arc<stats::Stats>,
 }
 
 impl RelayConnection {
-    pub fn new(tunnel_id: String, ticket: String, udsapi: Arc<dyn udsapi::UDSApiProvider>) -> Self {
+    pub fn new(
+        tunnel_id: String,
+        ticket: String,
+        udsapi: Arc<dyn udsapi::UDSApiProvider>,
+        stats: Arc<stats::Stats>,
+    ) -> Self {
         Self {
             tunnel_id,
             ticket,
@@ -26,6 +34,8 @@ impl RelayConnection {
             src: String::new(),
             dst: String::new(),
             notify_ticket: String::new(),
+            global_stats: stats.clone(),
+            local_stats: Arc::new(stats::Stats::new()),
         }
     }
 
@@ -89,30 +99,52 @@ impl RelayConnection {
         // Open the connection to the destination server (server stream)
         let server = format!("{}:{}", uds_response.host, uds_response.port);
 
-        log::debug!("Connecting to {}", server);
+        log::info!(
+            "OPEN TUNNEL ({}) FROM {} to {}",
+            self.tunnel_id,
+            self.src,
+            self.dst
+        );
+
         let server_stream = match TcpStream::connect(server.clone()).await {
             Ok(stream) => stream,
             Err(e) => {
-                log::error!("Error connecting to {}: {:?}", server, e);
+                log::error!("CONNECTION FAILED ({}): {:?}", self.tunnel_id, e);
+                client_stream
+                    .write_all(types::Response::ConnectError.to_bytes())
+                    .await
+                    .unwrap();
+                client_stream.shutdown().await.unwrap_or_default(); // Close the client connection
                 return;
             }
         };
+        client_stream
+            .write_all(types::Response::Ok.to_bytes())
+            .await
+            .unwrap();
 
         let (mut server_reader, mut server_writer) = server_stream.into_split();
 
         // Split the client stream into reader and writer
         let (mut client_reader, mut client_writer) = tokio::io::split(client_stream);
 
-        let server_to_client_stopper = stop_event.clone();
+        let local_tasks_stopper = event::Event::new();
+
+        let global_stats = self.global_stats.clone();
+        let local_stats = self.local_stats.clone();
+
+        let global_stopper = stop_event.clone();
+        let local_stopper = local_tasks_stopper.clone();
         let server_to_client = tokio::task::spawn(async move {
-            // Using a buf on heap so transfer between tasks is faster
-            // Only need to transfer the pointer, not the data as in the case of [u8; 1024]
             let mut buf = vec![0; 1024];
             log::debug!("Starting server_to_client task");
             loop {
-                let inner_stop_event = server_to_client_stopper.clone();
                 tokio::select! {
-                    _ = inner_stop_event => {
+                    _ = global_stopper.clone() => {
+                        log::debug!("Stopping server_to_client task");
+                        break;
+                    }
+                    _ = local_stopper.clone() => {
                         log::debug!("Stopping server_to_client task");
                         break;
                     }
@@ -122,6 +154,10 @@ impl RelayConnection {
                                 break;
                             }
                             Ok(n) => {
+                                // Ad to global and local stats
+                                global_stats.add_send_bytes(n as u64);
+                                local_stats.add_send_bytes(n as u64);
+
                                 let mut error: Option<()> = None;
                                 client_writer.write_all(&buf[..n]).await.unwrap_or_else(|_| error = Some(()));
                                 if error.is_some() {
@@ -143,16 +179,22 @@ impl RelayConnection {
             }
         });
 
-        let client_to_server_stopper = stop_event.clone();
+        let global_stats = self.global_stats.clone();
+        let local_stats = self.local_stats.clone();
+
+        let global_stopper = stop_event.clone();
+        let local_stopper = local_tasks_stopper.clone();
+
         let client_to_server = tokio::task::spawn(async move {
-            // Using a buf on heap so transfer between tasks is faster
-            // Only need to transfer the pointer, not the data as in the case of [u8; 1024]
             let mut buf = vec![0; 1024];
             log::debug!("Starting client_to_server task");
             loop {
-                let inner_stop_event = client_to_server_stopper.clone();
                 tokio::select! {
-                    _ = inner_stop_event => {
+                    _ = global_stopper.clone() => {
+                        log::debug!("Stopping client_to_server task");
+                        break;
+                    }
+                    _ = local_stopper.clone() => {
                         log::debug!("Stopping client_to_server task");
                         break;
                     }
@@ -162,6 +204,9 @@ impl RelayConnection {
                                 break;
                             }
                             Ok(n) => {
+                                // Ad to global and local stats
+                                global_stats.add_recv_bytes(n as u64);
+                                local_stats.add_recv_bytes(n as u64);
                                 let mut error: Option<()> = None;
                                 server_writer.write_all(&buf[..n]).await.unwrap_or_else(|_| error = Some(()));
                                 if error.is_some() {
@@ -193,6 +238,7 @@ impl RelayConnection {
                 log::debug!("Write task completed: {:?}", res);
             }
         }
+        local_tasks_stopper.set();
         // As soon as one or the tasks is completed, the connection will be closed
         // Ant the other task will be cancelled
         // because the streams halves will get out of scope, so they will be dropped
@@ -200,6 +246,7 @@ impl RelayConnection {
         // Notify the end to UDS and log it
         log::debug!("Notifying end to UDS");
         self.notify_end().await;
+        log::debug!("End of tunnel relay");
     }
 
     async fn notify_end(&mut self) -> () {
@@ -209,15 +256,20 @@ impl RelayConnection {
                 self.tunnel_id,
                 self.src,
                 self.dst,
-                0u64,
-                0u64,
-                0u64,
-                //self.stats_manager.local.sent,
-                //self.stats_manager.local.recv,
-                //self.stats_manager.elapsed_time,
+                self.local_stats.get_send_bytes(),
+                self.local_stats.get_recv_bytes(),
+                self.local_stats.get_duration().as_secs()
             );
             // Send the notification to UDS
-            let _ = self.udsapi.notify_end(&self.ticket, 0, 0).await;
+            let _ = self
+                .udsapi
+                .notify_end(
+                    &self.ticket,
+                    self.local_stats.get_send_bytes(),
+                    self.local_stats.get_recv_bytes(),
+                    self.local_stats.get_duration(),
+                )
+                .await;
             self.notify_ticket.clear(); // Clean up so no more notifications
         } else {
             log::info!("TERMINATED ({}) {}", self.tunnel_id, self.src);

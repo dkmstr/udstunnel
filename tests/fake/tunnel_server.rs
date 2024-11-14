@@ -6,7 +6,7 @@ use log;
 use tokio::{self, task::JoinHandle};
 
 use udstunnel::tunnel::udsapi::UDSApiProvider;
-use udstunnel::tunnel::{config, event, server, udsapi};
+use udstunnel::tunnel::{config, event, server, stats, udsapi};
 
 use super::remote::Remote;
 
@@ -67,6 +67,7 @@ pub struct TunnelServer {
     pub server_handle: JoinHandle<()>,
     pub remote_handle: JoinHandle<()>,
     pub stopper: event::Event,
+    pub stats: Arc<stats::Stats>,
 }
 
 #[allow(dead_code)]
@@ -90,8 +91,10 @@ impl TunnelServer {
         let task_provider = provider.clone();
         let stopper = event::Event::new();
         let task_stopper = stopper.clone();
+        let stats = Arc::new(stats::Stats::new());
+        let stats_co = stats.clone();
         let server_handle = tokio::spawn(async move {
-            let mut tunnel = server::TunnelServer::new(&launch_config);
+            let mut tunnel = server::TunnelServer::new(&launch_config, stats_co.clone());
             if mock_remotes {
                 tunnel = tunnel.with_provider(task_provider);
             }
@@ -108,6 +111,7 @@ impl TunnelServer {
             remote_handle,
             server_handle,
             stopper,
+            stats,
         }
     }
 

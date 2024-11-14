@@ -3,9 +3,11 @@ extern crate udstunnel;
 
 mod fake;
 
+use std::time::Duration;
+
 use tokio::{
     self,
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::{AsyncReadExt, AsyncWriteExt}, time::timeout,
 };
 
 //#[cfg(test)]
@@ -48,20 +50,23 @@ async fn test_server_open_command() {
     );
 
     // Check the request
-    let reqs = reqs.lock().unwrap();
-    assert_eq!(reqs.len(), 1);
-    assert_eq!(reqs[0].ticket, std::str::from_utf8(&ticket).unwrap());
-    assert_eq!("[::1]:".to_string(), reqs[0].message[..6].to_string());
-    assert_eq!(reqs[0].query_params, None);
+    // Note: Reqs has a lock that will be hold on shutdown
+    // so we need to ensure lock is released before calling shutdonw
+    {
+        let reqs = reqs.lock().unwrap();
+        assert_eq!(reqs.len(), 1);
+        assert_eq!(reqs[0].ticket, std::str::from_utf8(&ticket).unwrap());
+        assert_eq!("[::1]:".to_string(), reqs[0].message[..6].to_string());
+        assert_eq!(reqs[0].query_params, None);
+    }
 
     client.shutdown().await.unwrap();
 
     server.abort();
 
-    match server.server_handle.await {
+    match timeout(Duration::from_secs(4), server.server_handle).await {
         Ok(_) => (),
         Err(e) => {
-            // Should be a cancel error
             panic!("Error: {:?}", e);
         }
     }

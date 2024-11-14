@@ -34,11 +34,12 @@ pub trait UDSApiProvider: Send + Sync {
         ticket: &str,
         sent: u64,
         recv: u64,
+        duration: std::time::Duration,
     ) -> Result<UdsTicketResponse, std::io::Error> {
         self.request(
             ticket,
             "stop",
-            Some(format!("sent={}&recv={}", sent, recv).as_str()),
+            Some(format!("sent={}&recv={}&elapsed={}", sent, recv, duration.as_secs()).as_str()),
         )
         .await
     }

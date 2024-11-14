@@ -18,6 +18,7 @@ pub const RESPONSE_ERROR_TICKET: &str = "ERROR_TICKET";
 pub const RESPONSE_ERROR_COMMAND: &str = "ERROR_COMMAND";
 pub const RESPONSE_ERROR_TIMEOUT: &str = "TIMEOUT";
 pub const RESPONSE_FORBIDDEN: &str = "FORBIDDEN";
+pub const RESPONSE_ERROR_CONNECT: &str = "ERROR_CONNECT";
 pub const RESPONSE_OK: &str = "OK";
 
 pub const CONFIGFILE: &str = "/etc/udstunnel.conf";

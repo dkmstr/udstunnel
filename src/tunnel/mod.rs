@@ -8,4 +8,6 @@ pub mod types;
 
 pub mod relay;
 pub mod udsapi;
+pub mod stats;
+
 pub mod event;

@@ -18,20 +18,22 @@ use uuid;
 
 use crate::tunnel::{relay, types};
 
-use super::{config, consts, udsapi, event};
+use super::{config, consts, event, stats, udsapi};
 use crate::tls;
 
 pub struct TunnelServer {
     pub udsapi: Arc<dyn udsapi::UDSApiProvider>,
     pub config: config::Config,
+    pub stats: Arc<stats::Stats>,
 }
 
 impl TunnelServer {
-    pub fn new(config: &config::Config) -> Self {
+    pub fn new(config: &config::Config, stats: Arc<stats::Stats>) -> Self {
         let config = config.clone();
         TunnelServer {
             udsapi: Arc::new(udsapi::HttpUDSApiProvider::new(&config)),
             config,
+            stats,
         }
     }
 
@@ -39,13 +41,11 @@ impl TunnelServer {
         TunnelServer {
             udsapi: provider,
             config: self.config,
+            stats: self.stats,
         }
     }
 
-    pub async fn run(
-        self,
-        stop_event: event::Event,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn run(self, stop_event: event::Event) -> Result<(), Box<dyn std::error::Error>> {
         let certs = CertificateDer::from_pem_file(self.config.ssl_certificate.clone()).unwrap();
         let private_key: PrivateKeyDer<'_> =
             PrivateKeyDer::from_pem_file(self.config.ssl_certificate_key.clone()).unwrap();
@@ -106,6 +106,10 @@ impl TunnelServer {
 
             let config = self.config.clone(); // Clone the config to move it to the task
             let udsapi = self.udsapi.clone();
+            let stats = self.stats.clone();
+
+            // A new connection, increment the counter
+            stats.add_connection();
 
             let relay_stop_event = stop_event.clone();
             let task = tokio::spawn(async move {
@@ -124,7 +128,7 @@ impl TunnelServer {
                 if handshake.is_err() || buf != consts::HANDSHAKE_V1 {
                     // If it's not a timeout, log the error
                     log_error(handshake.err(), &buf, &tunnel_id, &src, "HANDSHAKE").await;
-                    stream.shutdown().await.unwrap_or_default();  // Ignore error
+                    stream.shutdown().await.unwrap_or_default(); // Ignore error
                     return;
                 }
 
@@ -145,31 +149,42 @@ impl TunnelServer {
                     Some(command) => command,
                 };
 
-                let ok_response = types::Response::Ok.to_bytes();
-
                 match command {
                     types::Command::Open(ticket) => {
-                        stream.write_all(ok_response).await.unwrap();
-                        relay::RelayConnection::new(tunnel_id, ticket, udsapi.clone())
-                            .run(stream, relay_stop_event.clone())
-                            .await;
+                        relay::RelayConnection::new(
+                            tunnel_id,
+                            ticket,
+                            udsapi.clone(),
+                            stats.clone(),
+                        )
+                        .run(stream, relay_stop_event.clone())
+                        .await;
                     }
                     types::Command::Test => {
                         log::info!("TEST ({tunnel_id}) from {src}");
-                        stream.write_all(ok_response).await.unwrap();
+                        stream
+                            .write_all(types::Response::Ok.to_bytes())
+                            .await
+                            .unwrap();
                         // Returns and closes the connection
                         stream.shutdown().await.unwrap();
                     }
                     // Stat and info are only allowed from config.allow sources (list of ips, no networks)
                     types::Command::Stat => {
                         log::info!("STAT ({tunnel_id}) from {src}");
-                        stream.write_all(ok_response).await.unwrap();
+                        stream
+                            .write_all(types::Response::Ok.to_bytes())
+                            .await
+                            .unwrap();
                         // TODO: Return stats
                         stream.shutdown().await.unwrap();
                     }
                     types::Command::Info => {
                         log::info!("INFO ({tunnel_id}) from {src}");
-                        stream.write_all(ok_response).await.unwrap();
+                        stream
+                            .write_all(types::Response::Ok.to_bytes())
+                            .await
+                            .unwrap();
                         // TODO: Return info
                         stream.shutdown().await.unwrap();
                     }
@@ -179,8 +194,8 @@ impl TunnelServer {
                             .write_all(types::Response::CommandError.to_bytes())
                             .await
                             .unwrap_or_default();
-                            
-                        stream.shutdown().await.unwrap_or_default();  // Ignore error
+
+                        stream.shutdown().await.unwrap_or_default(); // Ignore error
                     }
                 }
             });

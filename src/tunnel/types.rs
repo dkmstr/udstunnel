@@ -81,6 +81,7 @@ pub enum Response {
     CommandError,
     TimeoutError,
     ForbiddenError,
+    ConnectError,
     Ok,
 }
 
@@ -91,6 +92,7 @@ impl Response {
             Response::CommandError => consts::RESPONSE_ERROR_COMMAND,
             Response::TimeoutError => consts::RESPONSE_ERROR_TIMEOUT,
             Response::ForbiddenError => consts::RESPONSE_FORBIDDEN,
+            Response::ConnectError => consts::RESPONSE_ERROR_CONNECT,
             Response::Ok => consts::RESPONSE_OK,
         }
     }

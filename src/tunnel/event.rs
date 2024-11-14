@@ -2,19 +2,19 @@ use core::fmt;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{atomic::AtomicUsize, Arc, Mutex};
+use std::sync::{atomic::AtomicU64, Arc, Mutex};
 use std::task::{Context, Poll, Waker};
 
-static EVENT_ID: AtomicUsize = AtomicUsize::new(0);
+static EVENT_ID: AtomicU64 = AtomicU64::new(0);
 
 pub struct Event {
     state: Arc<Mutex<State>>,
-    waker_id: usize,
+    waker_id: u64,  // Do not need sync, as it will be only written once at creation/clone
 }
 
 struct State {
     value: bool,
-    wakers: HashMap<usize, Waker>, // Usa Weak<Waker> en lugar de Waker
+    wakers: HashMap<u64, Waker>, 
 }
 
 impl fmt::Debug for State {
@@ -57,6 +57,8 @@ impl Clone for Event {
     }
 }
 
+// Drop the waker from the list when the event is dropped
+// to ensure that the list do not grow indefinitely for not used events
 impl Drop for Event {
     fn drop(&mut self) {
         let mut state = self.state.lock().unwrap();

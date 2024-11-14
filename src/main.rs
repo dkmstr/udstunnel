@@ -1,8 +1,10 @@
+use std::sync::Arc;
+
 use log::{debug, info};
 
 use udstunnel::tunnel::{self, consts};
 
-use udstunnel::tunnel::{server, config, event};
+use udstunnel::tunnel::{config, event, server, stats};
 
 use clap;
 
@@ -71,8 +73,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     debug!("Config: {:?}", config);
     //println!("{}", cmd.render_long_help());
 
+    let stats = Arc::new(stats::Stats::new());
+
     if tunnel {
-        let tunnel = server::TunnelServer::new(&config);
+        let tunnel = server::TunnelServer::new(&config, stats.clone());
 
         let stop_event = event::Event::new();
 
