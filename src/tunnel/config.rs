@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use sha2::{Sha256, Digest};
+
 /// The `ConfigLoader` struct is responsible for loading and managing the configuration
 /// for the UDS tunnel application. It provides methods to set various configuration
 /// parameters and load the configuration from a file or environment variables.
@@ -215,6 +217,15 @@ impl ConfigLoader {
             .max(0.1);
         let uds_timeout = Duration::from_millis((uds_timeout * 1000.0) as u64);
 
+        // Secret is the sha256 of the secret in the configuration file
+        // It's used to validate the secret in the commands STATS, or whetever is needed in the future
+        let secret = cfg_reader.get::<String>("secret")?;
+        // empty strings are fine, no secret means no secret :)
+        let mut hasher = Sha256::new();
+        hasher.update(secret);
+        let result = hasher.finalize();
+        let secret = format!("{:x}", result);
+
         // Crate a configuration object
         Ok(Config {
             pidfile: cfg_reader.get("pidfile")?,
@@ -237,7 +248,7 @@ impl ConfigLoader {
             uds_timeout,
             uds_verify_ssl: cfg_reader.get("uds_verify_ssl")?,
             command_timeout,
-            secret: cfg_reader.get("secret")?,
+            secret,
             allow,
         })
     }

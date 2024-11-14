@@ -128,6 +128,9 @@ impl RelayConnection {
         // Split the client stream into reader and writer
         let (mut client_reader, mut client_writer) = tokio::io::split(client_stream);
 
+        // Current connections counter
+        self.global_stats.add_concurrent_connection();
+
         let local_tasks_stopper = event::Event::new();
 
         let global_stats = self.global_stats.clone();
@@ -238,7 +241,12 @@ impl RelayConnection {
                 log::debug!("Write task completed: {:?}", res);
             }
         }
+        // Ensure the other task is also stopped
         local_tasks_stopper.set();
+
+        // And update the concurrent connections
+        self.global_stats.sub_concurrent_connection();
+        
         // As soon as one or the tasks is completed, the connection will be closed
         // Ant the other task will be cancelled
         // because the streams halves will get out of scope, so they will be dropped
@@ -256,7 +264,7 @@ impl RelayConnection {
                 self.tunnel_id,
                 self.src,
                 self.dst,
-                self.local_stats.get_send_bytes(),
+                self.local_stats.get_sent_bytes(),
                 self.local_stats.get_recv_bytes(),
                 self.local_stats.get_duration().as_secs()
             );
@@ -265,7 +273,7 @@ impl RelayConnection {
                 .udsapi
                 .notify_end(
                     &self.ticket,
-                    self.local_stats.get_send_bytes(),
+                    self.local_stats.get_sent_bytes(),
                     self.local_stats.get_recv_bytes(),
                     self.local_stats.get_duration(),
                 )

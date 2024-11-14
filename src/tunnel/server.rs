@@ -109,7 +109,7 @@ impl TunnelServer {
             let stats = self.stats.clone();
 
             // A new connection, increment the counter
-            stats.add_connection();
+            stats.add_global_connection();
 
             let relay_stop_event = stop_event.clone();
             let task = tokio::spawn(async move {
@@ -170,22 +170,29 @@ impl TunnelServer {
                         stream.shutdown().await.unwrap();
                     }
                     // Stat and info are only allowed from config.allow sources (list of ips, no networks)
-                    types::Command::Stat => {
-                        log::info!("STAT ({tunnel_id}) from {src}");
-                        stream
-                            .write_all(types::Response::Ok.to_bytes())
-                            .await
-                            .unwrap();
-                        // TODO: Return stats
-                        stream.shutdown().await.unwrap();
-                    }
-                    types::Command::Info => {
-                        log::info!("INFO ({tunnel_id}) from {src}");
-                        stream
-                            .write_all(types::Response::Ok.to_bytes())
-                            .await
-                            .unwrap();
-                        // TODO: Return info
+                    types::Command::Stats(secret) => {
+                        log::info!("STATS ({tunnel_id}) from {src}");
+                        // Should be of a valid source and secret
+                        let ip = stream.get_ref().0.peer_addr().unwrap().ip().to_string();
+                        // Ip does not have brackets, if it's an IPv6
+                        if !config.allow.is_empty() && (!config.allow.contains(&ip) || secret != config.secret) {
+                            stream
+                                .write_all(types::Response::ForbiddenError.to_bytes())
+                                .await
+                                .unwrap();
+                            return;
+                        }
+
+                        let stats = format!(
+                            "{};{};{};{}",
+                            stats.get_concurrent_connections(),
+                            stats.get_globals_connections(),
+                            stats.get_sent_bytes(),
+                            stats.get_recv_bytes()
+                        );
+                        stream.write_all(stats.as_bytes()).await.unwrap();
+
+
                         stream.shutdown().await.unwrap();
                     }
                     types::Command::Unknown => {
@@ -212,15 +219,15 @@ impl TunnelServer {
         tunnel_id: &str,
     ) -> Option<types::Command> {
         // Read the command, with timeout (config.command_timeout)
-        let mut buf = [0u8; consts::COMMAND_LENGTH + consts::TICKET_LENGTH];
-        let command = match timeout(command_timeout, stream.read(&mut buf)).await {
+        let mut buf = [0u8; 128];  // 128 bytes should be enough for a command and a ticket/secret
+        let cmd_read_result = match timeout(command_timeout, stream.read(&mut buf)).await {
             Ok(command) => command,
             Err(e) => Err(std::io::Error::new(std::io::ErrorKind::TimedOut, e)),
         };
 
         // Check command result
-        if command.is_err() {
-            let is_timeout = log_error(command.err(), &buf, &tunnel_id, &src, "COMMAND").await;
+        if cmd_read_result.is_err() {
+            let is_timeout = log_error(cmd_read_result.err(), &buf, &tunnel_id, &src, "COMMAND").await;
             if is_timeout {
                 stream
                     .write_all(types::Response::TimeoutError.to_bytes())
@@ -236,12 +243,15 @@ impl TunnelServer {
             return None;
         }
 
+        let size = cmd_read_result.as_ref().unwrap();
+        let buf = &buf[..*size];
+
         if let Some(command) = types::Command::from_bytes(&buf) {
             log::info!("COMMAND ({tunnel_id}) {command} from {src}");
             Some(command)
         } else {
             let hex = to_hex(&buf);
-            log_error(command.err(), &buf, &tunnel_id, &src, "COMMAND").await;
+            log_error(cmd_read_result.err(), &buf, &tunnel_id, &src, "COMMAND").await;
             log::error!("COMMAND ({tunnel_id}) invalid from {src}: {hex}");
             let response = types::Response::CommandError;
             stream.write_all(response.to_bytes()).await.unwrap();
@@ -249,6 +259,7 @@ impl TunnelServer {
             None
         }
     }
+
 }
 
 // Some helper functions

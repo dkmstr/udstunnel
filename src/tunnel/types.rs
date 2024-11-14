@@ -6,8 +6,7 @@ use super::consts;
 pub enum Command {
     Open(String),
     Test,
-    Stat,
-    Info,
+    Stats(String),
     Unknown,
 }
 
@@ -28,14 +27,25 @@ impl Command {
                     if ticket.chars().all(|c| c.is_ascii_alphanumeric()) {
                         return Some(Command::Open(ticket.to_string()));
                     }
-                    return None;  // Invalid ticket, not alphanumeric
+                    return None; // Invalid ticket, not alphanumeric
                 } else {
                     None
                 }
             }
             consts::COMMAND_TEST => Some(Command::Test),
-            consts::COMMAND_STAT => Some(Command::Stat),
-            consts::COMMAND_INFO => Some(Command::Info),
+            consts::COMMAND_STATS | consts::COMMAND_INFO => {
+                // Get remainder of the string after command that is the secret
+                let secret = s.get(consts::COMMAND_STATS.len()..)?;
+                if secret.len() == consts::SECRET_LENGTH {
+                    // Should match "^[a-zA-Z0-9]{32}$", 32 characters long and only ascii alphanumeric
+                    if secret.chars().all(|c| c.is_ascii_alphanumeric()) {
+                        return Some(Command::Stats(secret.to_string()));
+                    }
+                    return None; // Invalid secret, not alphanumeric
+                } else {
+                    None
+                }
+            }
             _ => Some(Command::Unknown),
         }
     }
@@ -69,8 +79,7 @@ impl std::fmt::Display for Command {
         match self {
             Command::Open(ticket) => write!(f, "OPEN {}", ticket),
             Command::Test => write!(f, "TEST"),
-            Command::Stat => write!(f, "STAT"),
-            Command::Info => write!(f, "INFO"),
+            Command::Stats(secret) => write!(f, "STAT {}", secret),
             Command::Unknown => write!(f, "UNKNOWN"),
         }
     }
@@ -121,17 +130,40 @@ mod tests {
                 "123456789012345678901234567890123456789012345678".to_string()
             ))
         );
+        // Only 47 characters
         assert_eq!(
             Command::from_str("OPEN12345678901234567890123456789012345678901234567"),
             None
         );
+        // 49 characters
         assert_eq!(
             Command::from_str("OPEN1234567890123456789012345678901234567890123456789"),
             None
         );
         assert_eq!(Command::from_str("TEST"), Some(Command::Test));
-        assert_eq!(Command::from_str("STAT"), Some(Command::Stat));
-        assert_eq!(Command::from_str("INFO"), Some(Command::Info));
+        // Stat with 64 characters as secret
+        assert_eq!(
+            Command::from_str(
+                "STAT1234567890123456789012345678901234567890123456789012345678901234"
+            ),
+            Some(Command::Stats(
+                "1234567890123456789012345678901234567890123456789012345678901234".to_string()
+            ))
+        );
+        // Stat with 63 characters as secret
+        assert_eq!(
+            Command::from_str(
+                "STAT123456789012345678901234567890123456789012345678901234567890123"
+            ),
+            None
+        );
+        // Stat with 65 characters as secret
+        assert_eq!(
+            Command::from_str(
+                "STAT12345678901234567890123456789012345678901234567890123456789012345"
+            ),
+            None
+        );
         assert_eq!(Command::from_str("INVALID"), Some(Command::Unknown));
 
         // Test into
