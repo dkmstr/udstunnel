@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use log::{debug, info};
 
@@ -6,9 +6,19 @@ use udstunnel::tunnel::{self, consts};
 
 use udstunnel::tunnel::{config, event, server, stats};
 
+use tokio::select;
+
+use tokio::{
+    signal::{
+        self,
+        unix::{signal as unix_signal, SignalKind},
+    },
+    time::timeout,
+};
+
 use clap;
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cmd = clap::Command::new("udstunnel")
         .version("5.0.0")
@@ -80,14 +90,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let stop_event = event::Event::new();
 
-        match tunnel.run(stop_event.clone()).await {
-            Ok(_) => {
-                info!("Tunnel server started");
+        let ctrl_c = signal::ctrl_c();
+        let mut stream = unix_signal(SignalKind::terminate())?;
+
+        let task_stopper = stop_event.clone();
+        let tunnel_task = tokio::spawn(async move {
+            if let Err(e) = tunnel.run(task_stopper).await {
+                info!("Tunnel server error: {:?}", e);
             }
-            Err(e) => {
-                info!("Error starting tunnel server: {:?}", e);
+        });
+
+        select! {
+            _ = ctrl_c => {
+                info!("Ctrl-C received, stopping tunnel server");
+                stop_event.set();
+            }
+            _ = stream.recv() => {
+                info!("SIGTERM received, stopping tunnel server");
+                stop_event.set();
             }
         }
+
+        // Ensure tunnel task is finished
+        // While stats get_concurrent_connections is not 0, we wait (with a timeout)
+        info!("Waiting for tunnel relay tasks to finish");
+        timeout(Duration::from_secs(8), async {
+            while stats.get_concurrent_connections() > 0 {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        })
+        .await
+        .expect("Timeout waiting for concurrent connections to be 0. Force stopping");
+
+        info!("Waiting for tunnel task to finish");
+        timeout(Duration::from_secs(8), tunnel_task)
+            .await
+            .expect("Tunnel task should never fail")
+            .expect("Timeout waiting for tunnel task. Force stopping");
+    } else {
+        // TODO: Implement stats
     }
 
     Ok(())

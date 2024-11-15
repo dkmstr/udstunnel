@@ -6,6 +6,7 @@ authors = ["Adolfo Gómez <Dkmaster@dkmon.com>"]
 
 [dependencies]
 tokio = { version = "1.41.1", features = ["full"] }
+tokio-signal = "0.2.9"
 tokio-rustls = "0.26.0"
 bytes = "1.8.0"
 rustls = { version = "0.23.16", features = ["tls12"] }

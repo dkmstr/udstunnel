@@ -16,7 +16,7 @@ use tokio_rustls::{
 };
 use uuid;
 
-use crate::tunnel::{remote_client, types};
+use crate::tunnel::{relay, types};
 
 use super::{config, consts, event, stats, udsapi};
 use crate::tls;
@@ -162,7 +162,7 @@ impl TunnelServer {
 
                 match command {
                     types::Command::Open(ticket) => {
-                        remote_client::RemoteClient::new(
+                        relay::RelayConnection::new(
                             tunnel_id,
                             ticket,
                             udsapi.clone(),

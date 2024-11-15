@@ -39,6 +39,10 @@ impl Event {
 
     pub fn set(&self) {
         let mut state = self.state.lock().unwrap();
+        // If already set, do nothing
+        if state.value {
+            return;
+        }
         state.value = true;
 
         // Will clean all wakers as soon as they are just used

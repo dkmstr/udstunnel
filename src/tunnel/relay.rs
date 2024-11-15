@@ -7,7 +7,7 @@ use tokio_rustls::server::TlsStream;
 
 use super::{event, stats, types, udsapi};
 
-pub struct RemoteClient {
+pub struct RelayConnection {
     pub tunnel_id: String,
     pub ticket: String,
     pub udsapi: Arc<dyn udsapi::UDSApiProvider>,
@@ -20,7 +20,7 @@ pub struct RemoteClient {
     pub local_stats: Arc<stats::Stats>,
 }
 
-impl RemoteClient {
+impl RelayConnection {
     pub fn new(
         tunnel_id: String,
         ticket: String,
