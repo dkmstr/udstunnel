@@ -76,11 +76,18 @@ mod tests {
         assert_eq!(config.allow, vec!["127.0.0.1", "127.0.0.2", "::1"]);
     }
 
+    #[test]
     fn test_load_from_file_overrided_by_env() {
         // Set some env variables
+        std::env::set_var("UDSTUNNEL_PIDFILE", "/tmp/test.pid");
+        std::env::set_var("UDSTUNNEL_USER", "testuser");
+
         let config = ConfigLoader::new()
             .with_filename("tests/udstunnel.conf")
             .load()
             .unwrap();
+
+        assert_eq!(config.pidfile, "/tmp/test.pid");
+        assert_eq!(config.user, "testuser");
     }
 }

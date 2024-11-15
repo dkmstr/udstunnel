@@ -3,12 +3,9 @@ extern crate udstunnel;
 
 mod fake;
 
-use std::time::Duration;
-
 use tokio::{
     self,
     io::{AsyncReadExt, AsyncWriteExt},
-    time::timeout,
 };
 
 use udstunnel::tunnel::consts;
