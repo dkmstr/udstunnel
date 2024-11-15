@@ -12,6 +12,16 @@ pub struct UdsTicketResponse {
     pub notify: String,
 }
 
+impl Default for UdsTicketResponse {
+    fn default() -> Self {
+        UdsTicketResponse {
+            host: String::new(),
+            port: 0,
+            notify: String::new(),
+        }
+    }
+}
+
 #[async_trait]
 pub trait UDSApiProvider: Send + Sync {
     async fn request(
@@ -36,12 +46,22 @@ pub trait UDSApiProvider: Send + Sync {
         recv: u64,
         duration: std::time::Duration,
     ) -> Result<UdsTicketResponse, std::io::Error> {
-        self.request(
-            ticket,
-            "stop",
-            Some(format!("sent={}&recv={}&elapsed={}", sent, recv, duration.as_secs()).as_str()),
-        )
-        .await
+        // Ignore response
+        let _ = self
+            .request(
+                ticket,
+                "stop",
+                Some(
+                    format!("sent={}&recv={}&elapsed={}", sent, recv, duration.as_secs()).as_str(),
+                ),
+            )
+            .await;
+        // Return empty response
+        Ok(UdsTicketResponse {
+            host: String::new(),
+            port: 0,
+            notify: String::new(),
+        })
     }
 }
 
@@ -108,18 +128,27 @@ impl UDSApiProvider for HttpUDSApiProvider {
             self.server, ticket, message, self.token, query
         );
 
-        let response = client.get(&url).timeout(self.timeout).send().await.unwrap();
+        let response = match client.get(&url).timeout(self.timeout).send().await {
+            Ok(response) => response,
+            Err(e) => {
+                log::error!("Error requesting UDS: {:?}", e);
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.to_string(),
+                ));
+            }
+        };
 
         // Extract json if response is fine
         if response.status().is_success() {
-            let uds_response: UdsTicketResponse = response.json().await.unwrap();
+            let uds_response: UdsTicketResponse = response.json().await.unwrap_or_default();
             log::debug!("UDS Response: {:?}", uds_response);
             return Ok(uds_response);
         } else {
-            log::error!("UDS Response: {:?}", response);
+            log::error!("UDS Response status error: {:?}", response);
             return Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                format!("UDS Response: {:?}", response),
+                format!("UDS Response status error: {:?}", response),
             ));
         }
     }

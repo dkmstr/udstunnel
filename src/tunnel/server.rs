@@ -52,7 +52,7 @@ impl TunnelServer {
 
         let protocol_versions: Vec<&rustls::SupportedProtocolVersion> =
             match self.config.ssl_min_tls_version.as_str() {
-                "1.2" => vec![&TLS12],
+                "1.2" => vec![&TLS12, &TLS13],
                 "1.3" => vec![&TLS13],
                 _ => vec![&TLS12, &TLS13],
             };
@@ -233,7 +233,7 @@ impl TunnelServer {
         // Read the command, with timeout (config.command_timeout)
         let mut buf = [0u8; 128]; // 128 bytes should be enough for a command and a ticket/secret
         let cmd_read_result = match timeout(command_timeout, stream.read(&mut buf)).await {
-            Ok(command) => command,
+            Ok(read_result) => read_result,
             Err(e) => Err(std::io::Error::new(std::io::ErrorKind::TimedOut, e)),
         };
 

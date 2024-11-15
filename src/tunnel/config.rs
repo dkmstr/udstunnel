@@ -236,7 +236,7 @@ impl ConfigLoader {
         let secret = format!("{:x}", result);
 
         // Crate a configuration object
-        Ok(Config {
+        let cfg = Config {
             pidfile: cfg_reader.get("pidfile")?,
             user: cfg_reader.get("user")?,
             loglevel: cfg_reader.get::<String>("loglevel")?.to_uppercase(),
@@ -260,6 +260,8 @@ impl ConfigLoader {
             handshake_timeout,
             secret,
             allow,
-        })
+        };
+        log::debug!("Configuration loaded: {:?}", cfg);
+        Ok(cfg)
     }
 }

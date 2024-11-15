@@ -5,6 +5,8 @@ use tokio::{
 };
 use tokio_rustls::server::TlsStream;
 
+use crate::tunnel::consts;
+
 use super::{event, stats, types, udsapi};
 
 pub struct RelayConnection {
@@ -63,6 +65,7 @@ impl RelayConnection {
             return;
         }
 
+        let src_ip = src_peer_addr.ip().to_string();  // For notify, we need the IP address
         if src_peer_addr.ip().to_string().contains(':') {
             self.src = format!("[{}]:{}", src_peer_addr.ip(), src_peer_addr.port());
         } else {
@@ -70,7 +73,7 @@ impl RelayConnection {
         }
 
         let uds_response;
-        if let Ok(response) = self.udsapi.get_ticket(&self.ticket, &self.src).await {
+        if let Ok(response) = self.udsapi.get_ticket(&self.ticket, &src_ip).await {
             uds_response = response;
             log::debug!("UDS Response: {:?}", uds_response);
         } else {
@@ -139,7 +142,7 @@ impl RelayConnection {
         let global_stopper = stop_event.clone();
         let local_stopper = local_tasks_stopper.clone();
         let server_to_client = tokio::task::spawn(async move {
-            let mut buf = vec![0; 1024];
+            let mut buf = vec![0; consts::BUFFER_SIZE];
             log::debug!("Starting server_to_client task");
             loop {
                 tokio::select! {
@@ -151,7 +154,7 @@ impl RelayConnection {
                         log::debug!("Stopping server_to_client task");
                         break;
                     }
-                    read_result = server_reader.read_buf(&mut buf) => {
+                    read_result = server_reader.read(&mut buf) => {
                         match read_result {
                             Ok(0) => {
                                 break;
@@ -189,7 +192,7 @@ impl RelayConnection {
         let local_stopper = local_tasks_stopper.clone();
 
         let client_to_server = tokio::task::spawn(async move {
-            let mut buf = vec![0; 1024];
+            let mut buf = vec![0; consts::BUFFER_SIZE];
             log::debug!("Starting client_to_server task");
             loop {
                 tokio::select! {
@@ -201,7 +204,7 @@ impl RelayConnection {
                         log::debug!("Stopping client_to_server task");
                         break;
                     }
-                    read_result = client_reader.read_buf(&mut buf) => {
+                    read_result = client_reader.read(&mut buf) => {
                         match read_result {
                             Ok(0) => {
                                 break;

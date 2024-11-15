@@ -75,4 +75,12 @@ mod tests {
         assert_eq!(config.secret, "49562cfc3b17139ea01c480b9c86a2ddacb38ff1b2e9db1bf66bab7a4e3f1fb5");
         assert_eq!(config.allow, vec!["127.0.0.1", "127.0.0.2", "::1"]);
     }
+
+    fn test_load_from_file_overrided_by_env() {
+        // Set some env variables
+        let config = ConfigLoader::new()
+            .with_filename("tests/udstunnel.conf")
+            .load()
+            .unwrap();
+    }
 }
