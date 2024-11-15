@@ -1,7 +1,7 @@
 use rustls::{crypto::aws_lc_rs, ALL_VERSIONS};
-use tokio::{io, net::TcpStream};
+use tokio::net::TcpStream;
 
-use std::fmt;
+use std::{fmt, io::Error};
 use std::sync::Arc;
 
 use log::debug;
@@ -62,7 +62,7 @@ impl ConnectionBuilder {
         self
     }
 
-    pub async fn connect(self) -> io::Result<TlsStream<TcpStream>> {
+    pub async fn connect(self) -> Result<TlsStream<TcpStream>, Error> {
         debug!("Connecting to {}:{}", self.server, self.port);
         // Load RootCertStore from /etc/ssl/certs/ca-certificates.crt
         let cert_path = self

@@ -99,7 +99,10 @@ impl TunnelServer {
                 tunnel = tunnel.with_provider(task_provider);
             }
             let result = tunnel.run(task_stopper).await;
-            assert!(result.is_ok());
+            if let Err(e) = result {
+                log::error!("Error: {:?}", e);
+                panic!("Error: {:?}", e);
+            }
         });
 
         // Should be listening on configure port, let's wait a bit to

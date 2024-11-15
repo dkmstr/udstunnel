@@ -16,7 +16,7 @@ use tokio_rustls::{
 };
 use uuid;
 
-use crate::tunnel::{relay, types};
+use crate::tunnel::{remote_client, types};
 
 use super::{config, consts, event, stats, udsapi};
 use crate::tls;
@@ -112,22 +112,33 @@ impl TunnelServer {
             stats.add_global_connection();
 
             let relay_stop_event = stop_event.clone();
-            let task = tokio::spawn(async move {
+            tokio::spawn(async move {
                 log::info!("CONNECTION ({tunnel_id}) from {src}");
 
                 let mut buf = vec![0u8; consts::HANDSHAKE_V1.len()];
 
                 // 1.- Read the handshake (with timeout)
                 let handshake =
-                    match timeout(consts::HANDSHAKE_TIMEOUT, stream.read_exact(&mut buf)).await {
+                    match timeout(config.handshake_timeout, stream.read_exact(&mut buf)).await {
                         Ok(handshake) => handshake,
                         Err(e) => Err(std::io::Error::new(std::io::ErrorKind::TimedOut, e)),
                     };
 
                 // If no valid, even if timeout, close the connection and log the error
                 if handshake.is_err() || buf != consts::HANDSHAKE_V1 {
-                    // If it's not a timeout, log the error
+                    if handshake.is_err() {
+                        stream
+                            .write_all(types::Response::TimeoutError.to_bytes())
+                            .await
+                            .unwrap_or_default();
+                    } else {
+                        stream
+                            .write_all(types::Response::HandshakeError.to_bytes())
+                            .await
+                            .unwrap_or_default();
+                    }
                     log_error(handshake.err(), &buf, &tunnel_id, &src, "HANDSHAKE").await;
+                    // If timeout, send a timeout response
                     stream.shutdown().await.unwrap_or_default(); // Ignore error
                     return;
                 }
@@ -151,7 +162,7 @@ impl TunnelServer {
 
                 match command {
                     types::Command::Open(ticket) => {
-                        relay::RelayConnection::new(
+                        remote_client::RemoteClient::new(
                             tunnel_id,
                             ticket,
                             udsapi.clone(),
@@ -175,7 +186,9 @@ impl TunnelServer {
                         // Should be of a valid source and secret
                         let ip = stream.get_ref().0.peer_addr().unwrap().ip().to_string();
                         // Ip does not have brackets, if it's an IPv6
-                        if !config.allow.is_empty() && (!config.allow.contains(&ip) || secret != config.secret) {
+                        if !config.allow.is_empty()
+                            && (!config.allow.contains(&ip) || secret != config.secret)
+                        {
                             stream
                                 .write_all(types::Response::ForbiddenError.to_bytes())
                                 .await
@@ -192,7 +205,6 @@ impl TunnelServer {
                         );
                         stream.write_all(stats.as_bytes()).await.unwrap();
 
-
                         stream.shutdown().await.unwrap();
                     }
                     types::Command::Unknown => {
@@ -207,7 +219,7 @@ impl TunnelServer {
                 }
             });
 
-            task.await?;
+            // The task will run in the background, we don't need to await it
         }
         Ok(())
     }
@@ -219,7 +231,7 @@ impl TunnelServer {
         tunnel_id: &str,
     ) -> Option<types::Command> {
         // Read the command, with timeout (config.command_timeout)
-        let mut buf = [0u8; 128];  // 128 bytes should be enough for a command and a ticket/secret
+        let mut buf = [0u8; 128]; // 128 bytes should be enough for a command and a ticket/secret
         let cmd_read_result = match timeout(command_timeout, stream.read(&mut buf)).await {
             Ok(command) => command,
             Err(e) => Err(std::io::Error::new(std::io::ErrorKind::TimedOut, e)),
@@ -227,7 +239,9 @@ impl TunnelServer {
 
         // Check command result
         if cmd_read_result.is_err() {
-            let is_timeout = log_error(cmd_read_result.err(), &buf, &tunnel_id, &src, "COMMAND").await;
+            let is_timeout =
+                cmd_read_result.as_ref().unwrap_err().kind() == std::io::ErrorKind::TimedOut;
+            log_error(cmd_read_result.err(), &buf, &tunnel_id, &src, "COMMAND").await;
             if is_timeout {
                 stream
                     .write_all(types::Response::TimeoutError.to_bytes())
@@ -254,12 +268,14 @@ impl TunnelServer {
             log_error(cmd_read_result.err(), &buf, &tunnel_id, &src, "COMMAND").await;
             log::error!("COMMAND ({tunnel_id}) invalid from {src}: {hex}");
             let response = types::Response::CommandError;
-            stream.write_all(response.to_bytes()).await.unwrap();
-            stream.shutdown().await.unwrap();
+            stream
+                .write_all(response.to_bytes())
+                .await
+                .unwrap_or_default(); // Ignore error, returning error
+            stream.shutdown().await.unwrap_or_default(); // Ignore error,
             None
         }
     }
-
 }
 
 // Some helper functions
@@ -277,12 +293,11 @@ async fn log_error(
     connection_id: &str,
     from: &str,
     head: &str,
-) -> bool {
+) -> () {
     // Returns true if it was a timeout
     if let Some(e) = result {
         if e.kind() == std::io::ErrorKind::TimedOut {
             log::error!("{head} ({connection_id}) error from {from}: timed out");
-            return true;
         } else {
             log::error!("{head} ({connection_id}) error from {from}: {e}");
         }
@@ -290,5 +305,4 @@ async fn log_error(
         let hex = to_hex(&buf);
         log::error!("{head} ({connection_id}) invalid from {from}: {hex}");
     }
-    false
 }

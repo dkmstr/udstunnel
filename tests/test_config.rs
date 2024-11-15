@@ -35,6 +35,7 @@ mod tests {
         assert_eq!(config.uds_timeout, Duration::from_millis(10000));
         assert_eq!(config.uds_verify_ssl, true);
         assert_eq!(config.command_timeout, Duration::from_millis(3000));
+        assert_eq!(config.handshake_timeout, Duration::from_millis(3000));
         // Sha256 of empty string
         assert_eq!(config.secret, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
         assert_eq!(config.allow, Vec::<String>::new());
@@ -68,9 +69,10 @@ mod tests {
         assert_eq!(config.uds_token, "uds_token");
         assert_eq!(config.uds_timeout, Duration::from_millis(4000));
         assert_eq!(config.uds_verify_ssl, false);
-        assert_eq!(config.command_timeout, Duration::from_millis(13000));
+        assert_eq!(config.command_timeout, Duration::from_millis(1000));
+        assert_eq!(config.handshake_timeout, Duration::from_millis(1000));
         // Sha256 of "MySecret"
         assert_eq!(config.secret, "49562cfc3b17139ea01c480b9c86a2ddacb38ff1b2e9db1bf66bab7a4e3f1fb5");
-        assert_eq!(config.allow, vec!["127.0.0.1", "127.0.0.2"]);
+        assert_eq!(config.allow, vec!["127.0.0.1", "127.0.0.2", "::1"]);
     }
 }

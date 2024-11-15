@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 
 /// The `ConfigLoader` struct is responsible for loading and managing the configuration
 /// for the UDS tunnel application. It provides methods to set various configuration
@@ -67,6 +67,7 @@ pub struct Config {
     pub uds_timeout: Duration,
     pub uds_verify_ssl: bool,
 
+    pub handshake_timeout: Duration,
     pub command_timeout: Duration,
 
     pub secret: String,
@@ -74,7 +75,6 @@ pub struct Config {
     // Not used on rust
     // use_uvloop: bool
 }
-
 
 pub struct ConfigLoader {
     filename: String,
@@ -168,6 +168,7 @@ impl ConfigLoader {
             .set_default("uds_timeout", 10.0)?
             .set_default("uds_verify_ssl", true)?
             .set_default("command_timeout", 3.0)?
+            .set_default("handshake_timeout", 3.0)?
             .set_default("secret", "")?
             .set_default("allow", "")?
             .add_source(config::File::new(&self.filename, config::FileFormat::Ini).required(false))
@@ -206,13 +207,21 @@ impl ConfigLoader {
         };
         let command_timeout = cfg_reader
             .get::<f32>("command_timeout")
-            .unwrap_or(3.0)
+            .unwrap()
             .min(16.0)
             .max(0.4);
         let command_timeout = Duration::from_millis((command_timeout * 1000.0) as u64);
+
+        let handshake_timeout = cfg_reader
+            .get::<f32>("handshake_timeout")
+            .unwrap()
+            .min(16.0)
+            .max(0.4);
+        let handshake_timeout = Duration::from_millis((handshake_timeout * 1000.0) as u64);
+
         let uds_timeout = cfg_reader
             .get::<f32>("uds_timeout")
-            .unwrap_or(10.0)
+            .unwrap()
             .min(60.0)
             .max(0.1);
         let uds_timeout = Duration::from_millis((uds_timeout * 1000.0) as u64);
@@ -248,6 +257,7 @@ impl ConfigLoader {
             uds_timeout,
             uds_verify_ssl: cfg_reader.get("uds_verify_ssl")?,
             command_timeout,
+            handshake_timeout,
             secret,
             allow,
         })

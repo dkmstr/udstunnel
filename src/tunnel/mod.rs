@@ -6,7 +6,7 @@ pub mod log;
 pub mod server;
 pub mod types;
 
-pub mod relay;
+pub mod remote_client;
 pub mod udsapi;
 pub mod stats;
 
