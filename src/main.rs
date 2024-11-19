@@ -91,7 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let stop_event = event::Event::new();
 
         let ctrl_c = signal::ctrl_c();
-        let mut stream = unix_signal(SignalKind::terminate())?;
+        let mut terminate = unix_signal(SignalKind::terminate())?;
 
         let task_stopper = stop_event.clone();
         let tunnel_task = tokio::spawn(async move {
@@ -105,7 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 info!("Ctrl-C received, stopping tunnel server");
                 stop_event.set();
             }
-            _ = stream.recv() => {
+            _ = terminate.recv() => {
                 info!("SIGTERM received, stopping tunnel server");
                 stop_event.set();
             }
