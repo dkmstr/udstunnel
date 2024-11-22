@@ -66,6 +66,7 @@ impl Clone for Event {
 impl Drop for Event {
     fn drop(&mut self) {
         let mut state = self.state.lock().unwrap();
+        // clean the waker from the list
         state.wakers.remove(&self.waker_id);
     }
 }
@@ -78,7 +79,6 @@ impl Future for Event {
         if state.value {
             Poll::Ready(true)
         } else {
-            // Clean up the wakers that have been dropped
             // Add the current waker to the list
             state.wakers.insert(self.waker_id, cx.waker().clone());
             Poll::Pending

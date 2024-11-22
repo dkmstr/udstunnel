@@ -1,5 +1,3 @@
-extern crate udstunnel;
-
 use udstunnel::tunnel::config::ConfigLoader;
 mod fake;
 

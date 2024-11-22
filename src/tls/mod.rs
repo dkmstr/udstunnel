@@ -1,5 +1,5 @@
-pub mod client;
 pub mod callbacks;
+pub mod client;
 
-pub mod noverify;
 pub mod crypto_provider;
+pub mod noverify;

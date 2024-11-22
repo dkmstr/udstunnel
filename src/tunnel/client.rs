@@ -3,7 +3,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tokio::{
     io::{self, AsyncWriteExt},
-    net::TcpStream, time::timeout,
+    net::TcpStream,
+    time::timeout,
 };
 
 use tokio_rustls::client::TlsStream;
@@ -37,10 +38,12 @@ pub async fn connect(
     match timeout(
         Duration::from_secs(8),
         ConnectionBuilder::new(tunnel_server, port)
-        .with_connect_callback(UDSClientConnectionCB {})
-        .with_verify_ssl(verify_ssl)
-        .connect()
-    ).await {
+            .with_connect_callback(UDSClientConnectionCB {})
+            .with_verify_ssl(verify_ssl)
+            .connect(),
+    )
+    .await
+    {
         Ok(conn) => conn,
         Err(e) => {
             panic!("Error connecting to server: {:?}", e);

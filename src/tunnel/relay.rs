@@ -65,7 +65,7 @@ impl RelayConnection {
             return;
         }
 
-        let src_ip = src_peer_addr.ip().to_string();  // For notify, we need the IP address
+        let src_ip = src_peer_addr.ip().to_string(); // For notify, we need the IP address
         if src_peer_addr.ip().to_string().contains(':') {
             self.src = format!("[{}]:{}", src_peer_addr.ip(), src_peer_addr.port());
         } else {
@@ -249,7 +249,7 @@ impl RelayConnection {
 
         // And update the concurrent connections
         self.global_stats.sub_concurrent_connection();
-        
+
         // As soon as one or the tasks is completed, the connection will be closed
         // Ant the other task will be cancelled
         // because the streams halves will get out of scope, so they will be dropped
