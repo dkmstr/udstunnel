@@ -9,12 +9,12 @@ static EVENT_ID: AtomicU64 = AtomicU64::new(0);
 
 pub struct Event {
     state: Arc<Mutex<State>>,
-    waker_id: u64,  // Do not need sync, as it will be only written once at creation/clone
+    waker_id: u64, // Do not need sync, as it will be only written once at creation/clone
 }
 
 struct State {
     value: bool,
-    wakers: HashMap<u64, Waker>, 
+    wakers: HashMap<u64, Waker>,
 }
 
 impl fmt::Debug for State {
@@ -38,16 +38,24 @@ impl Event {
     }
 
     pub fn set(&self) {
-        let mut state = self.state.lock().unwrap();
-        // If already set, do nothing
-        if state.value {
-            return;
-        }
-        state.value = true;
+        let mut awakers = Vec::new();
 
-        // Will clean all wakers as soon as they are just used
-        for waker in state.wakers.drain() {
-            waker.1.wake();
+        // To avoid deadlocks, we need to release the lock before waking up the wakers
+        {
+            let mut state = self.state.lock().unwrap();
+            // If already set, do nothing
+            if state.value {
+                return;
+            }
+            state.value = true;
+
+            // Will clean all wakers as soon as they are just used
+            for waker in state.wakers.drain() {
+                awakers.push(waker.1);
+            }
+        } // Release the lock, with the wakers to be woken up
+        for waker in awakers {
+            waker.wake();
         }
     }
 }
