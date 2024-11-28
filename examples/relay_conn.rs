@@ -10,8 +10,14 @@ async fn main() -> io::Result<()> {
         tokio::spawn(async move {
             let (mut reader, mut writer) = socket.into_split();
 
-            let relay = TcpStream::connect("dc.dkmon.local:3389").await.unwrap();
-            let (relay_reader, mut relay_writer) = relay.into_split();
+            let relay = match TcpStream::connect("dc.dkmon.local:3389").await {
+                Ok(relay) => relay,
+                Err(e) => {
+                    println!("Error connecting to relay: {:?}", e);
+                    return;
+                }
+            };
+            let (mut relay_reader, mut relay_writer) = relay.into_split();
 
             let read_task = task::spawn(async move {
                 // Using a buf on heap so transfer between tasks is faster
@@ -25,7 +31,13 @@ async fn main() -> io::Result<()> {
                             break;
                         }
                         Ok(n) => {
-                            relay_writer.write_all(&buf[..n]).await.unwrap();
+                            match relay_writer.write_all(&buf[..n]).await {
+                                Ok(_) => (),
+                                Err(e) => {
+                                    println!("Error writing to relay: {:?}", e);
+                                    break;
+                                }
+                            };
                         }
                         Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                             continue;
@@ -43,13 +55,18 @@ async fn main() -> io::Result<()> {
                 // Only need to transfer the pointer, not the data as in the case of [u8; 1024]
                 let mut buf = vec![0; 1024];
                 loop {
-                    relay_reader.readable().await.unwrap();
-                    match relay_reader.try_read(&mut buf) {
+                    match relay_reader.read(&mut buf).await {
                         Ok(0) => {
                             break;
                         }
                         Ok(n) => {
-                            writer.write_all(&buf[..n]).await.unwrap();
+                            match writer.write_all(&buf[..n]).await {
+                                Ok(_) => (),
+                                Err(e) => {
+                                    println!("Error writing to relay: {:?}", e);
+                                    break;
+                                }
+                            };
                         }
                         Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                             continue;
@@ -63,13 +80,11 @@ async fn main() -> io::Result<()> {
             });
 
             // As soon as one of the tasks completes, the other task will be dropped
-            // and the connection will be closed.
+            // and the connection will be closed. (by scope)
             tokio::select! {
-                res = read_task => {
-                    println!("Read task completed: {:?}", res);
+                _ = read_task => {
                 }
-                res = write_task => {
-                    println!("Write task completed: {:?}", res);
+                _ = write_task => {
                 }
             }
         });
