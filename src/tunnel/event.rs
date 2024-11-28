@@ -38,7 +38,7 @@ impl Event {
     }
 
     pub fn set(&self) {
-        let mut awakers = Vec::new();
+        let awakers: Vec<Waker>;
 
         // To avoid deadlocks, we need to release the lock before waking up the wakers
         {
@@ -49,10 +49,9 @@ impl Event {
             }
             state.value = true;
 
-            // Will clean all wakers as soon as they are just used
-            for waker in state.wakers.drain() {
-                awakers.push(waker.1);
-            }
+            // Drain the wakers to be woken up to release the lock as soon as possible
+            // And avoid calling the wakers while holding the lock
+            awakers = state.wakers.drain().map(|(_, waker)| waker).collect();
         } // Release the lock, with the wakers to be woken up
         for waker in awakers {
             waker.wake();
@@ -113,6 +112,9 @@ async fn test_event_cleans_up_wakers() {
     }
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
     // As all events are out of scope, the wakers should be cleaned up
+    // That is, after 1 seconds, the task will release the cloned event
+    // So the wakers should be cleaned up after 2 seconds
+    // Note that whe wakers array will be filled in the "await" call (poll)
     assert!(event.state.lock().unwrap().wakers.is_empty());
 
     for task in tasks {
