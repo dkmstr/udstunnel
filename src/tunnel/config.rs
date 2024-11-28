@@ -207,21 +207,21 @@ impl ConfigLoader {
         };
         let command_timeout = cfg_reader
             .get::<f32>("command_timeout")
-            .unwrap()
+            .unwrap_or_default()
             .min(16.0)
             .max(0.4);
         let command_timeout = Duration::from_millis((command_timeout * 1000.0) as u64);
 
         let handshake_timeout = cfg_reader
             .get::<f32>("handshake_timeout")
-            .unwrap()
+            .unwrap_or_default()
             .min(16.0)
             .max(0.4);
         let handshake_timeout = Duration::from_millis((handshake_timeout * 1000.0) as u64);
 
         let uds_timeout = cfg_reader
             .get::<f32>("uds_timeout")
-            .unwrap()
+            .unwrap_or_default()
             .min(60.0)
             .max(0.1);
         let uds_timeout = Duration::from_millis((uds_timeout * 1000.0) as u64);

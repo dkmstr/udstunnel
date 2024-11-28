@@ -103,11 +103,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         select! {
             _ = ctrl_c => {
                 info!("Ctrl-C received, stopping tunnel server");
-                stop_event.set();
+                stop_event.set().unwrap();
             }
             _ = terminate.recv() => {
                 info!("SIGTERM received, stopping tunnel server");
-                stop_event.set();
+                stop_event.set().unwrap();
             }
         }
 

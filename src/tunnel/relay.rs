@@ -245,7 +245,7 @@ impl RelayConnection {
             }
         }
         // Ensure the other task is also stopped
-        local_tasks_stopper.set();
+        local_tasks_stopper.set().unwrap();
 
         // And update the concurrent connections
         self.global_stats.sub_concurrent_connection();

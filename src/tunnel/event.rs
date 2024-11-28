@@ -37,15 +37,21 @@ impl Event {
         }
     }
 
-    pub fn set(&self) {
+    pub fn set(&self) -> Result<(), ()> {
         let awakers: Vec<Waker>;
 
         // To avoid deadlocks, we need to release the lock before waking up the wakers
         {
-            let mut state = self.state.lock().unwrap();
+            let mut state = match self.state.lock() {
+                Ok(state) => state,
+                Err(_) => {
+                    log::error!("Error locking the event state");
+                    return Err(());
+                }
+            };
             // If already set, do nothing
             if state.value {
-                return;
+                return Ok(());
             }
             state.value = true;
 
@@ -56,6 +62,7 @@ impl Event {
         for waker in awakers {
             waker.wake();
         }
+        Ok(())
     }
 }
 
@@ -72,7 +79,13 @@ impl Clone for Event {
 // to ensure that the list do not grow indefinitely for not used events
 impl Drop for Event {
     fn drop(&mut self) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = match self.state.lock() {
+            Ok(state) => state,
+            Err(_) => {
+                log::error!("Error locking the event state");
+                return; // The waker will not be removed from the list, but it is not a big deal because this should not happen
+            }
+        };
         // clean the waker from the list
         state.wakers.remove(&self.waker_id);
     }
@@ -147,7 +160,7 @@ async fn test_event_wakes_all_wakers() {
         tasks.push(task);
     }
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-    event.set();
+    event.set().unwrap();
     for task in tasks {
         task.await.unwrap_or_else(|e| {
             println!("Task failed: {:?}", e);

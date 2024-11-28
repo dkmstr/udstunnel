@@ -119,7 +119,7 @@ impl TunnelServer {
     }
 
     pub fn abort(&self) {
-        self.stopper.set();
+        self.stopper.set().unwrap();
         // The remote need to be aborted too, but using abort, it's for testing
         self.remote_handle.abort();
     }
