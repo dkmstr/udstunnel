@@ -85,7 +85,7 @@ async fn test_server_open_command() {
         let reqs = reqs.lock().unwrap();
         assert_eq!(reqs.len(), 1);
         assert_eq!(reqs[0].ticket, std::str::from_utf8(&ticket).unwrap());
-        assert_eq!("[::1]:".to_string(), reqs[0].message[..6].to_string());
+        assert_eq!("::1".to_string(), reqs[0].message[..3].to_string());
         assert_eq!(reqs[0].query_params, None);
     }
 

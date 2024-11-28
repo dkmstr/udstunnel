@@ -79,12 +79,18 @@ impl Drop for Event {
 }
 
 impl Future for Event {
-    type Output = bool;
+    type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut state = self.state.lock().unwrap();
+        // In case of lock error, do our best by returning ready
+        let mut state = match self.state.lock() {
+            Ok(state) => state,
+            Err(_) => {
+                return Poll::Ready(());
+            }
+        };
         if state.value {
-            Poll::Ready(true)
+            Poll::Ready(())
         } else {
             // Add the current waker to the list
             state.wakers.insert(self.waker_id, cx.waker().clone());

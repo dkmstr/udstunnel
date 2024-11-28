@@ -22,7 +22,7 @@ pub fn setup(filename: &Option<String>, level: &str) {
         .format_module_path(false)
         .format_timestamp_millis()
         .format(|buf, record| writeln!(buf, "{} - {}", record.level(), record.args()))
-        .init();
+        .try_init().unwrap_or_default();
     #[cfg(debug_assertions)]
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(level.to_string()))
         .target(target)

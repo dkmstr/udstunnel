@@ -4,11 +4,14 @@ mod fake;
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
+    // Lock to avoid concurrent config tests due to env vars
+    static CONFIG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     use super::*;
 
     #[test]
     fn test_load_config_default() {
+        let _lock = CONFIG_LOCK.lock().unwrap();
         let config = ConfigLoader::new()
             .with_filename("non_existing_for_tests".into())
             .load()
@@ -41,6 +44,7 @@ mod tests {
 
     #[test]
     fn test_load_config_from_file() {
+        let _lock = CONFIG_LOCK.lock().unwrap();
         let config = ConfigLoader::new()
             .with_filename("tests/udstunnel.conf")
             .load()
@@ -76,6 +80,7 @@ mod tests {
 
     #[test]
     fn test_load_from_file_overrided_by_env() {
+        let _lock = CONFIG_LOCK.lock().unwrap();
         // Set some env variables
         std::env::set_var("UDSTUNNEL_PIDFILE", "/tmp/test.pid");
         std::env::set_var("UDSTUNNEL_USER", "testuser");
@@ -87,5 +92,9 @@ mod tests {
 
         assert_eq!(config.pidfile, "/tmp/test.pid");
         assert_eq!(config.user, "testuser");
+
+        // Clean up env to avoid side effects on other tests
+        std::env::remove_var("UDSTUNNEL_PIDFILE");
+        std::env::remove_var("UDSTUNNEL_USER");
     }
 }
