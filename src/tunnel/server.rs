@@ -156,8 +156,11 @@ impl TunnelServer {
                 )
                 .await
                 {
-                    None => return,
-                    Some(command) => command,
+                    Ok(command) => command,
+                    Err(err) => {
+                        log::debug!("COMMAND ({tunnel_id}) read error from {src}: {:?}", err);
+                        return;
+                    }
                 };
 
                 match command {
@@ -229,7 +232,7 @@ impl TunnelServer {
         src: &str,
         command_timeout: std::time::Duration,
         tunnel_id: &str,
-    ) -> Option<types::Command> {
+    ) -> Result<types::Command, std::io::Error> {
         // Read the command, with timeout (config.command_timeout)
         let mut buf = [0u8; 128]; // 128 bytes should be enough for a command and a ticket/secret
         let cmd_read_result = match timeout(command_timeout, stream.read(&mut buf)).await {
@@ -238,34 +241,31 @@ impl TunnelServer {
         };
 
         // Check command result
-        if cmd_read_result.is_err() {
-            let is_timeout =
-                cmd_read_result.as_ref().unwrap_err().kind() == std::io::ErrorKind::TimedOut;
-            log_error(cmd_read_result.err(), &buf, &tunnel_id, &src, "COMMAND").await;
-            if is_timeout {
+        if let Err(err) = &cmd_read_result {
+            log::debug!("COMMAND ({tunnel_id}) read error from {src}: {:?}", err);
+            if err.kind() == std::io::ErrorKind::TimedOut {
+                log::debug!("COMMAND ({tunnel_id}) read timeout from {src}");
                 stream
                     .write_all(types::Response::TimeoutError.to_bytes())
-                    .await
-                    .unwrap();
+                    .await?;
             } else {
                 stream
                     .write_all(types::Response::CommandError.to_bytes())
-                    .await
-                    .unwrap();
+                    .await?;
             }
-            stream.shutdown().await.unwrap();
-            return None;
+            stream.shutdown().await?;
+            return Err(std::io::Error::new(err.kind(), err.to_string()));
         }
 
         let size = cmd_read_result.as_ref().unwrap();
         let buf = &buf[..*size];
 
-        if let Some(command) = types::Command::from_bytes(&buf) {
+        if let Ok(command) = types::Command::from_bytes(buf) {
             log::info!("COMMAND ({tunnel_id}) {command} from {src}");
-            Some(command)
+            Ok(command)
         } else {
-            let hex = to_hex(&buf);
-            log_error(cmd_read_result.err(), &buf, &tunnel_id, &src, "COMMAND").await;
+            let hex = to_hex(buf);
+            log_error(cmd_read_result.err(), buf, tunnel_id, src, "COMMAND").await;
             log::error!("COMMAND ({tunnel_id}) invalid from {src}: {hex}");
             let response = types::Response::CommandError;
             stream
@@ -273,7 +273,7 @@ impl TunnelServer {
                 .await
                 .unwrap_or_default(); // Ignore error, returning error
             stream.shutdown().await.unwrap_or_default(); // Ignore error,
-            None
+            Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid command"))
         }
     }
 }
@@ -302,7 +302,7 @@ async fn log_error(
             log::error!("{head} ({connection_id}) error from {from}: {e}");
         }
     } else {
-        let hex = to_hex(&buf);
+        let hex = to_hex(buf);
         log::error!("{head} ({connection_id}) invalid from {from}: {hex}");
     }
 }

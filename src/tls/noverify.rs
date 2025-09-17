@@ -56,7 +56,7 @@ impl ServerCertVerifier for NoVerifySsl {
 
     fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
         debug!("Supported verify schemes");
-        return vec![
+        vec![
             rustls::SignatureScheme::ECDSA_NISTP521_SHA512,
             rustls::SignatureScheme::RSA_PSS_SHA512,
             rustls::SignatureScheme::RSA_PKCS1_SHA512,
@@ -70,6 +70,6 @@ impl ServerCertVerifier for NoVerifySsl {
             rustls::SignatureScheme::ED448,
             rustls::SignatureScheme::RSA_PKCS1_SHA1,
             rustls::SignatureScheme::ECDSA_SHA1_Legacy,
-        ];
+        ]
     }
 }

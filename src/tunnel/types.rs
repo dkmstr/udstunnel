@@ -1,3 +1,4 @@
+use std::{str::FromStr};
 use tokio::io::AsyncReadExt;
 
 use super::consts;
@@ -10,10 +11,12 @@ pub enum Command {
     Unknown,
 }
 
-impl Command {
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for Command {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.len() < consts::COMMAND_LENGTH {
-            return None;
+            return Err("Command too short");
         }
 
         match &s[..consts::COMMAND_LENGTH] {
@@ -21,41 +24,49 @@ impl Command {
                 // Get remainder of string after "OPEN " as the target (it's an ticket)
                 // OPEN<ticket>
                 // Ensure also that it has TICKET_LENGTH characters
-                let ticket = s.get(consts::COMMAND_OPEN.len()..)?;
+                let ticket = s
+                    .get(consts::COMMAND_OPEN.len()..)
+                    .ok_or("Invalid command")?;
                 if ticket.len() == consts::TICKET_LENGTH {
                     // Should match "^[a-zA-Z0-9]{48}$", 48 characters long and only ascii alphanumeric
                     if ticket.chars().all(|c| c.is_ascii_alphanumeric()) {
-                        return Some(Command::Open(ticket.to_string()));
+                        return Ok(Command::Open(ticket.to_string()));
                     }
-                    return None; // Invalid ticket, not alphanumeric
+                    Err("Invalid ticket, not alphanumeric")
                 } else {
-                    None
+                    Err("Invalid ticket length")
                 }
             }
-            consts::COMMAND_TEST => Some(Command::Test),
+            consts::COMMAND_TEST => Ok(Command::Test),
             consts::COMMAND_STATS | consts::COMMAND_INFO => {
                 // Get remainder of the string after command that is the secret
-                let secret = s.get(consts::COMMAND_STATS.len()..)?;
+                let secret = s
+                    .get(consts::COMMAND_STATS.len()..)
+                    .ok_or("Invalid command")?;
                 if secret.len() == consts::SECRET_LENGTH {
                     // Should match "^[a-zA-Z0-9]{32}$", 32 characters long and only ascii alphanumeric
                     if secret.chars().all(|c| c.is_ascii_alphanumeric()) {
-                        return Some(Command::Stats(secret.to_string()));
+                        return Ok(Command::Stats(secret.to_string()));
                     }
-                    return None; // Invalid secret, not alphanumeric
+                    Err("Invalid secret, not alphanumeric")
                 } else {
-                    None
+                    Err("Invalid secret length")
                 }
             }
-            _ => Some(Command::Unknown),
+            _ => Ok(Command::Unknown),
         }
     }
+}
 
-    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+impl Command {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, &'static str> {
         let command = String::from_utf8(bytes.to_vec()).unwrap();
         Command::from_str(&command)
     }
 
-    pub async fn read_from_stream(stream: &mut tokio::net::TcpStream) -> Option<Self> {
+    pub async fn read_from_stream(
+        stream: &mut tokio::net::TcpStream,
+    ) -> Result<Self, &'static str> {
         let mut buffer = [0; consts::COMMAND_LENGTH];
         stream.readable().await.unwrap();
         match stream.read(&mut buffer).await {
@@ -63,14 +74,14 @@ impl Command {
                 let command = String::from_utf8(buffer.to_vec()).unwrap();
                 Command::from_str(&command)
             }
-            Err(_) => None,
+            Err(_) => Err("Failed to read from stream"),
         }
     }
 }
 
-impl Into<Command> for String {
-    fn into(self) -> Command {
-        Command::from_str(&self).unwrap()
+impl From<&str> for Command {
+    fn from(s: &str) -> Self {
+        Command::from_str(s).unwrap_or(Command::Unknown)
     }
 }
 
@@ -113,9 +124,9 @@ impl Response {
     }
 }
 
-impl Into<String> for Response {
-    fn into(self) -> String {
-        self.to_string().to_string()
+impl From<Response> for String {
+    fn from(response: Response) -> Self {
+        response.to_string().to_string()
     }
 }
 
@@ -128,27 +139,27 @@ mod tests {
     fn test_command_from_str() {
         assert_eq!(
             Command::from_str("OPEN123456789012345678901234567890123456789012345678"),
-            Some(Command::Open(
+            Ok(Command::Open(
                 "123456789012345678901234567890123456789012345678".to_string()
             ))
         );
         // Only 47 characters
         assert_eq!(
             Command::from_str("OPEN12345678901234567890123456789012345678901234567"),
-            None
+            Err("Invalid ticket length")
         );
         // 49 characters
         assert_eq!(
             Command::from_str("OPEN1234567890123456789012345678901234567890123456789"),
-            None
+            Err("Invalid ticket length")
         );
-        assert_eq!(Command::from_str("TEST"), Some(Command::Test));
+        assert_eq!(Command::from_str("TEST"), Ok(Command::Test));
         // Stat with 64 characters as secret
         assert_eq!(
             Command::from_str(
                 "STAT1234567890123456789012345678901234567890123456789012345678901234"
             ),
-            Some(Command::Stats(
+            Ok(Command::Stats(
                 "1234567890123456789012345678901234567890123456789012345678901234".to_string()
             ))
         );
@@ -157,21 +168,19 @@ mod tests {
             Command::from_str(
                 "STAT123456789012345678901234567890123456789012345678901234567890123"
             ),
-            None
+            Err("Invalid secret length")
         );
         // Stat with 65 characters as secret
         assert_eq!(
             Command::from_str(
                 "STAT12345678901234567890123456789012345678901234567890123456789012345"
             ),
-            None
+            Err("Invalid secret length")
         );
-        assert_eq!(Command::from_str("INVALID"), Some(Command::Unknown));
+        assert_eq!(Command::from_str("INVALID"), Ok(Command::Unknown));
 
         // Test into
-        let command: Command = "OPEN123456789012345678901234567890123456789012345678"
-            .to_string()
-            .into();
+        let command: Command = "OPEN123456789012345678901234567890123456789012345678".into();
         assert_eq!(
             command,
             Command::Open("123456789012345678901234567890123456789012345678".to_string())

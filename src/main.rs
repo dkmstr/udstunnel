@@ -2,21 +2,16 @@ use std::{sync::Arc, time::Duration};
 
 use log::{debug, info};
 
-use udstunnel::tunnel::{self, consts};
+use udstunnel::tunnel::{self, config, consts, event, server, stats};
 
-use udstunnel::tunnel::{config, event, server, stats};
-
-use tokio::select;
+#[cfg(unix)]
+use tokio::signal::unix::{signal as unix_signal, SignalKind};
 
 use tokio::{
-    signal::{
-        self,
-        unix::{signal as unix_signal, SignalKind},
-    },
+    select,
+    signal::{self},
     time::timeout,
 };
-
-use clap;
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -91,6 +86,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let stop_event = event::Event::new();
 
         let ctrl_c = signal::ctrl_c();
+        #[cfg(unix)]
         let mut terminate = unix_signal(SignalKind::terminate())?;
 
         let task_stopper = stop_event.clone();
@@ -100,6 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
 
+        #[cfg(unix)]
         select! {
             _ = ctrl_c => {
                 info!("Ctrl-C received, stopping tunnel server");
@@ -107,6 +104,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             _ = terminate.recv() => {
                 info!("SIGTERM received, stopping tunnel server");
+                stop_event.set().unwrap();
+            }
+        }
+        #[cfg(not(unix))]
+        select! {
+            _ = ctrl_c => {
+                info!("Ctrl-C received, stopping tunnel server");
                 stop_event.set().unwrap();
             }
         }

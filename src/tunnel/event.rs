@@ -37,7 +37,7 @@ impl Event {
         }
     }
 
-    pub fn set(&self) -> Result<(), ()> {
+    pub fn set(&self) -> Result<(), &'static str> {
         let awakers: Vec<Waker>;
 
         // To avoid deadlocks, we need to release the lock before waking up the wakers
@@ -46,7 +46,7 @@ impl Event {
                 Ok(state) => state,
                 Err(_) => {
                     log::error!("Error locking the event state");
-                    return Err(());
+                    return Err("Error locking the event state");
                 }
             };
             // If already set, do nothing
@@ -140,6 +140,12 @@ async fn test_event_cleans_up_wakers() {
         task.await.unwrap_or_else(|e| {
             println!("Task failed: {:?}", e);
         });
+    }
+}
+
+impl Default for Event {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

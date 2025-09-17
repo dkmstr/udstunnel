@@ -67,3 +67,9 @@ impl Stats {
             .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
     }
 }
+
+impl Default for Stats {
+    fn default() -> Self {
+        Self::new()
+    }
+}

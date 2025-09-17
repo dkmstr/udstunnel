@@ -85,14 +85,13 @@ pub struct ConfigLoader {
 impl ConfigLoader {
     /// Create a new ConfigLoader object
     pub fn new() -> Self {
-        let config_file: String;
-        if cfg!(debug_assertions) {
-            config_file = "udstunnel.conf".into();
+        let config_file = if cfg!(debug_assertions) {
+            "udstunnel.conf".into()
         } else {
-            config_file = "/etc/udstunnel.conf".into();
-        }
+            "/etc/udstunnel.conf".into()
+        };
         ConfigLoader {
-            filename: config_file.into(),
+            filename: config_file,
             uds_server: None,
             uds_token: None,
         }
@@ -208,22 +207,20 @@ impl ConfigLoader {
         let command_timeout = cfg_reader
             .get::<f32>("command_timeout")
             .unwrap_or_default()
-            .min(16.0)
-            .max(0.4);
+            .clamp(0.4, 16.0);
+
         let command_timeout = Duration::from_millis((command_timeout * 1000.0) as u64);
 
         let handshake_timeout = cfg_reader
             .get::<f32>("handshake_timeout")
             .unwrap_or_default()
-            .min(16.0)
-            .max(0.4);
+            .clamp(0.4, 16.0);
         let handshake_timeout = Duration::from_millis((handshake_timeout * 1000.0) as u64);
 
         let uds_timeout = cfg_reader
             .get::<f32>("uds_timeout")
             .unwrap_or_default()
-            .min(60.0)
-            .max(0.1);
+            .clamp(0.1, 60.0);
         let uds_timeout = Duration::from_millis((uds_timeout * 1000.0) as u64);
 
         // Secret is the sha256 of the secret in the configuration file
@@ -263,5 +260,11 @@ impl ConfigLoader {
         };
         log::debug!("Configuration loaded: {:?}", cfg);
         Ok(cfg)
+    }
+}
+
+impl Default for ConfigLoader {
+    fn default() -> Self {
+        Self::new()
     }
 }

@@ -5,21 +5,11 @@ use reqwest::ClientBuilder;
 
 use super::{config, consts};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct UdsTicketResponse {
     pub host: String,
     pub port: u16,
     pub notify: String,
-}
-
-impl Default for UdsTicketResponse {
-    fn default() -> Self {
-        UdsTicketResponse {
-            host: String::new(),
-            port: 0,
-            notify: String::new(),
-        }
-    }
 }
 
 #[async_trait]
@@ -36,7 +26,7 @@ pub trait UDSApiProvider: Send + Sync {
         ticket: &str,
         ip: &str,
     ) -> Result<UdsTicketResponse, std::io::Error> {
-        self.request(ticket, &ip, None).await
+        self.request(ticket, ip, None).await
     }
 
     async fn notify_end(
@@ -109,10 +99,7 @@ impl UDSApiProvider for HttpUDSApiProvider {
             Ok(client) => client,
             Err(e) => {
                 log::error!("Error creating UDS client: {:?}", e);
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    e.to_string(),
-                ));
+                return Err(std::io::Error::other(e.to_string()));
             }
         };
 
@@ -132,10 +119,7 @@ impl UDSApiProvider for HttpUDSApiProvider {
             Ok(response) => response,
             Err(e) => {
                 log::error!("Error requesting UDS: {:?}", e);
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    e.to_string(),
-                ));
+                return Err(std::io::Error::other(e.to_string()));
             }
         };
 
@@ -146,10 +130,7 @@ impl UDSApiProvider for HttpUDSApiProvider {
             return Ok(uds_response);
         } else {
             log::error!("UDS Response status error: {:?}", response);
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("UDS Response status error: {:?}", response),
-            ));
+            return Err(std::io::Error::other(format!("UDS Response status error: {:?}", response)));
         }
     }
 }
