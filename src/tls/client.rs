@@ -9,11 +9,12 @@ use log::debug;
 use tokio_rustls::{
     client::TlsStream,
     rustls::{
-        pki_types::{pem::PemObject, CertificateDer},
         RootCertStore,
     },
     TlsConnector,
 };
+
+use rustls_native_certs::load_native_certs;
 
 use super::callbacks::TLSClientCallback;
 use super::noverify::NoVerifySsl;
@@ -23,7 +24,6 @@ pub struct ConnectionBuilder {
     port: u16,
     verify: bool,
     connect_callback: Option<Box<dyn TLSClientCallback>>,
-    certificate_path: Option<String>,
 }
 
 impl fmt::Debug for ConnectionBuilder {
@@ -43,7 +43,6 @@ impl ConnectionBuilder {
             port,
             verify: true,
             connect_callback: None,
-            certificate_path: None,
         }
     }
 
@@ -57,23 +56,10 @@ impl ConnectionBuilder {
         self
     }
 
-    pub fn with_certificate_path(mut self, path: &str) -> Self {
-        self.certificate_path = Some(String::from(path));
-        self
-    }
-
     pub async fn connect(self) -> Result<TlsStream<TcpStream>, Error> {
         debug!("Connecting to {}:{}", self.server, self.port);
-        // Load RootCertStore from /etc/ssl/certs/ca-certificates.crt
-        let cert_path = self
-            .certificate_path
-            .unwrap_or("/etc/ssl/certs/ca-certificates.crt".to_string());
-        debug!("Loading certificates from: {}", cert_path);
 
-        let certs: Vec<CertificateDer> = CertificateDer::pem_file_iter(cert_path)
-            .unwrap()
-            .map(|cert| cert.unwrap())
-            .collect();
+        let certs = load_native_certs().certs;
 
         let mut root_store = RootCertStore::empty();
         root_store.add_parsable_certificates(certs);

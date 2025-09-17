@@ -6,9 +6,10 @@ authors = ["Adolfo Gómez <Dkmaster@dkmon.com>"]
 
 [dependencies]
 tokio = { version = "1.47.1", features = ["full"] }
-tokio-rustls = "0.26.2"
+tokio-rustls = "0.26.3"
 bytes = "1.10.1"
 rustls = { version = "0.23.31", features = ["tls12"] }
+rustls-native-certs = "0.8.1"
 env_logger = "0.11.8"
 log = "0.4.28"
 async-trait = "0.1.89"
@@ -23,3 +24,4 @@ anyhow = "1.0.99"
 [dev-dependencies]
 tokio-test = "0.4.4"
 mockall = "0.13.1"
+mockito = "1.7.0"

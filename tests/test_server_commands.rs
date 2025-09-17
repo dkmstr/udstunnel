@@ -106,8 +106,10 @@ async fn test_server_stats() {
     let config = fake::config::read().await;
     let server = fake::tunnel_server::TunnelServer::create(&config, true).await;
 
-    server.stats.add_recv_bytes(12 * 4 * 2009);
-    server.stats.add_send_bytes(1 * 7 * 1972);
+    for tuple in [(12, 4, 2009), (1, 7, 1972)] {
+        server.stats.add_recv_bytes((tuple.0 * tuple.1 * tuple.2) as u64);
+        server.stats.add_send_bytes((tuple.0 * tuple.1 * tuple.2) as u64);
+    }
     for _i in 0..947 {
         server.stats.add_global_connection();
     }

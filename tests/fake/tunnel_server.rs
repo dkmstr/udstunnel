@@ -5,7 +5,8 @@ use std::sync::{Arc, Mutex};
 use log;
 use tokio::{self, task::JoinHandle};
 
-use udstunnel::tunnel::udsapi::UDSApiProvider;
+use anyhow::Result;
+
 use udstunnel::tunnel::{config, event, server, stats, udsapi};
 
 use super::remote::Remote;
@@ -33,13 +34,13 @@ impl UDSApiProviderMock {
 }
 
 #[async_trait::async_trait]
-impl UDSApiProvider for UDSApiProviderMock {
+impl udsapi::UDSApiProvider for UDSApiProviderMock {
     async fn request(
         &self,
         ticket: &str,
         message: &str,
         query_params: Option<&str>,
-    ) -> Result<udsapi::UdsTicketResponse, std::io::Error> {
+    ) -> Result<udsapi::UdsTicketResponse> {
         self.req.lock().unwrap().push(Request {
             ticket: ticket.to_string(),
             message: message.to_string(),
@@ -74,7 +75,7 @@ pub struct TunnelServer {
 impl TunnelServer {
     pub async fn create(config: &config::Config, mock_remotes: bool) -> TunnelServer {
         let launch_config = config.clone();
-        let provider: Arc<dyn UDSApiProvider>;
+        let provider: Arc<dyn udsapi::UDSApiProvider>;
         let req;
         let remote = Remote::new(None);
         let remote_handle = remote.spawn();

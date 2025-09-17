@@ -13,7 +13,7 @@ mod tests {
     fn test_load_config_default() {
         let _lock = CONFIG_LOCK.lock().unwrap();
         let config = ConfigLoader::new()
-            .with_filename("non_existing_for_tests".into())
+            .with_filename("non_existing_for_tests")
             .load()
             .unwrap();
         assert_eq!(config.pidfile, "/var/run/udstunnel.pid");
@@ -24,8 +24,8 @@ mod tests {
         assert_eq!(config.lognumber, 4);
         assert_eq!(config.listen_address, "0.0.0.0");
         assert_eq!(config.listen_port, 4443);
-        assert_eq!(config.ipv6, false);
-        assert_eq!(config.workers > 0, true);
+        assert!(!config.ipv6);
+        assert!(config.workers > 0);
         assert_eq!(config.ssl_min_tls_version, "1.2");
         assert_eq!(config.ssl_certificate, "/etc/certs/server.pem");
         assert_eq!(config.ssl_certificate_key, "/etc/certs/key.pem");
@@ -34,7 +34,7 @@ mod tests {
         assert_eq!(config.uds_server, "");
         assert_eq!(config.uds_token, "");
         assert_eq!(config.uds_timeout, Duration::from_millis(10000));
-        assert_eq!(config.uds_verify_ssl, true);
+        assert!(config.uds_verify_ssl);
         assert_eq!(config.command_timeout, Duration::from_millis(3000));
         assert_eq!(config.handshake_timeout, Duration::from_millis(3000));
         // Sha256 of empty string
@@ -57,8 +57,8 @@ mod tests {
         assert_eq!(config.lognumber, 3);
         assert_eq!(config.listen_address, "[::]");
         assert_eq!(config.listen_port, 7777);
-        assert_eq!(config.ipv6, true);
-        assert_eq!(config.workers > 0, true);
+        assert!(config.ipv6);
+        assert!(config.workers > 0);
         assert_eq!(config.ssl_min_tls_version, "1.3");
         assert_eq!(config.ssl_certificate, "tests/certs/cert.pem");
         assert_eq!(config.ssl_certificate_key, "tests/certs/key.pem");
@@ -70,7 +70,7 @@ mod tests {
         assert_eq!(config.uds_server, "http://127.0.0.1:8000/uds/rest/tunnel/ticket");
         assert_eq!(config.uds_token, "uds_token");
         assert_eq!(config.uds_timeout, Duration::from_millis(4000));
-        assert_eq!(config.uds_verify_ssl, false);
+        assert!(!config.uds_verify_ssl);
         assert_eq!(config.command_timeout, Duration::from_millis(1000));
         assert_eq!(config.handshake_timeout, Duration::from_millis(1000));
         // Sha256 of "MySecret"
