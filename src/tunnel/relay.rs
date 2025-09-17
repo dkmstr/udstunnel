@@ -5,9 +5,9 @@ use tokio::{
 };
 use tokio_rustls::server::TlsStream;
 
-use crate::tunnel::consts;
+use anyhow::Result;
 
-use super::{event, stats, types, udsapi};
+use super::{consts, event, stats, types, udsapi};
 
 pub struct RelayConnection {
     pub tunnel_id: String,
@@ -16,7 +16,7 @@ pub struct RelayConnection {
 
     pub src: String, // Source IP/Port
     pub dst: String, // Destination IP/Port
-    pub notify_ticket: String,
+    pub notify_ticket: Option<String>,
 
     pub global_stats: Arc<stats::Stats>,
     pub local_stats: Arc<stats::Stats>,
@@ -35,7 +35,7 @@ impl RelayConnection {
             udsapi,
             src: String::new(),
             dst: String::new(),
-            notify_ticket: String::new(),
+            notify_ticket: None,
             global_stats: stats.clone(),
             local_stats: Arc::new(stats::Stats::new()),
         }
@@ -45,46 +45,35 @@ impl RelayConnection {
         &mut self,
         mut client_stream: TlsStream<TcpStream>, // move value
         stop_event: event::Event,
-    ) -> () {
+    ) -> Result<()> {
         // 1.- Try to get the ticket from UDS Server
         // 2.- If ticket is not found, log the error and return (caller will close the connection)
         // 3.- If ticket is found, we will receive (json):
         // { 'host': '....', 'port': '....', 'notify': '....' }
         // Where host it te host to connect, port is the port to connect and notify is the UDS ticket used to notification
-        let src_peer_addr =
-            client_stream
-                .get_ref()
-                .0
-                .peer_addr()
-                .unwrap_or(std::net::SocketAddr::new(
-                    std::net::IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0)),
-                    0,
-                ));
-        if src_peer_addr.ip().is_unspecified() {
-            log::error!("Error getting peer address!");
-            return;
-        }
+        let src_ip = match self.set_src(&client_stream) {
+            Ok(ip) => ip,
+            Err(e) => {
+                log::error!("Error setting source IP: {}", e);
+                return Err(anyhow::anyhow!(e));
+            }
+        };
 
-        let src_ip = src_peer_addr.ip().to_string(); // For notify, we need the IP address
-        if src_peer_addr.ip().to_string().contains(':') {
-            self.src = format!("[{}]:{}", src_peer_addr.ip(), src_peer_addr.port());
-        } else {
-            self.src = format!("{}:{}", src_peer_addr.ip(), src_peer_addr.port());
-        }
-
-        let uds_response;
-        if let Ok(response) = self.udsapi.get_ticket(&self.ticket, &src_ip).await {
-            uds_response = response;
-            log::debug!("UDS Response: {:?}", uds_response);
+        let uds_response = if let Ok(response) = self.udsapi.get_ticket(&self.ticket, &src_ip).await
+        {
+            log::debug!("UDS Response: {:?}", response);
+            response
         } else {
             log::error!("Error requesting UDS");
-            return;
-        }
+            return Err(anyhow::anyhow!("Error requesting UDS"));
+        };
 
         // If host starts with #, it's a command, process it and return
+        // Note: This part is just an experiment. Command is an internal command, not a shell command
+        // So, if host starts with #, it's a command, (currently, only close is supported)
         if uds_response.host.starts_with('#') {
             log::debug!("Command received: {}", uds_response.host);
-            if let Some(response) = self.execute_command(&uds_response.host).await {
+            if let Some(response) = self.execute_command(&uds_response.host[1..]).await {
                 log::debug!("Command response: {}", response);
                 // Ignore errors, we are closing the connection
                 client_stream
@@ -92,12 +81,12 @@ impl RelayConnection {
                     .await
                     .unwrap_or_default();
                 client_stream.shutdown().await.unwrap_or_default();
-                return;
+                return Ok(()); // Return ok, as command was executed
             }
         }
 
         self.dst = format!("{}:{}", uds_response.host, uds_response.port);
-        self.notify_ticket = uds_response.notify;
+        self.notify_ticket = Some(uds_response.notify);
 
         // Open the connection to the destination server (server stream)
         let server = format!("{}:{}", uds_response.host, uds_response.port);
@@ -118,7 +107,7 @@ impl RelayConnection {
                     .await
                     .unwrap();
                 client_stream.shutdown().await.unwrap_or_default(); // Close the client connection
-                return;
+                return Err(anyhow::anyhow!(e));
             }
         };
         client_stream
@@ -256,12 +245,14 @@ impl RelayConnection {
 
         // Notify the end to UDS and log it
         log::debug!("Notifying end to UDS");
-        self.notify_end().await;
+        self.notify_end().await?;
         log::debug!("End of tunnel relay");
+
+        Ok(())
     }
 
-    async fn notify_end(&mut self) -> () {
-        if !self.notify_ticket.is_empty() {
+    async fn notify_end(&mut self) -> Result<()> {
+        if let Some(notify_ticket) = self.notify_ticket.take() {
             log::info!(
                 "TERMINATED ({}) {} to {}, s:{}, r:{}, t:{}",
                 self.tunnel_id,
@@ -272,26 +263,28 @@ impl RelayConnection {
                 self.local_stats.get_duration().as_secs()
             );
             // Send the notification to UDS
-            let _ = self
-                .udsapi
+            self.udsapi
                 .notify_end(
-                    &self.ticket,
+                    &notify_ticket,
                     self.local_stats.get_sent_bytes(),
                     self.local_stats.get_recv_bytes(),
                     self.local_stats.get_duration(),
                 )
-                .await;
-            self.notify_ticket.clear(); // Clean up so no more notifications
+                .await
+                .map_err(|e| {
+                    log::error!("Error notifying end to UDS: {:?}", e);
+                    e
+                })?;
         } else {
             log::info!("TERMINATED ({}) {}", self.tunnel_id, self.src);
         }
+        Ok(())
 
         // self.stats_manager.close();
         // self.owner.finished.set();
     }
 
     async fn execute_command(&self, command: &str) -> Option<String> {
-        let command = command.trim_start_matches('#');
         match command {
             "close" => None,
             _ => {
@@ -299,12 +292,28 @@ impl RelayConnection {
                 None
             }
         }
-        // Execute the command
-        // let output = Command::new("sh")
-        //     .arg("-c")
-        //     .arg(command)
-        //     .output()
-        //     .expect("failed to execute process");
-        // log::info!("Command output: {}", String::from_utf8_lossy(&output.stdout));
+    }
+
+    fn set_src(&mut self, client_stream: &TlsStream<TcpStream>) -> Result<String, &'static str> {
+        let src_peer_addr =
+            client_stream
+                .get_ref()
+                .0
+                .peer_addr()
+                .unwrap_or(std::net::SocketAddr::new(
+                    std::net::IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0)),
+                    0,
+                ));
+        if src_peer_addr.ip().is_unspecified() {
+            return Err("Error getting peer address");
+        }
+
+        let src_ip = src_peer_addr.ip().to_string(); // For notify, we need the IP address
+        if src_peer_addr.ip().to_string().contains(':') {
+            self.src = format!("[{}]:{}", src_peer_addr.ip(), src_peer_addr.port());
+        } else {
+            self.src = format!("{}:{}", src_peer_addr.ip(), src_peer_addr.port());
+        }
+        Ok(src_ip)
     }
 }

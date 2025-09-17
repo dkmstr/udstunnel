@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use reqwest::ClientBuilder;
+use anyhow::Result;
 
 use super::{config, consts};
 
@@ -19,13 +20,13 @@ pub trait UDSApiProvider: Send + Sync {
         ticket: &str,
         message: &str,
         query_params: Option<&str>,
-    ) -> Result<UdsTicketResponse, std::io::Error>;
+    ) -> Result<UdsTicketResponse>;
 
     async fn get_ticket(
         &self,
         ticket: &str,
         ip: &str,
-    ) -> Result<UdsTicketResponse, std::io::Error> {
+    ) -> Result<UdsTicketResponse> {
         self.request(ticket, ip, None).await
     }
 
@@ -35,7 +36,7 @@ pub trait UDSApiProvider: Send + Sync {
         sent: u64,
         recv: u64,
         duration: std::time::Duration,
-    ) -> Result<UdsTicketResponse, std::io::Error> {
+    ) -> Result<UdsTicketResponse> {
         // Ignore response
         let _ = self
             .request(
@@ -81,7 +82,7 @@ impl UDSApiProvider for HttpUDSApiProvider {
         ticket: &str,
         message: &str,
         query_params: Option<&str>,
-    ) -> Result<UdsTicketResponse, std::io::Error> {
+    ) -> Result<UdsTicketResponse> {
         // 1.- Try to get the ticket from UDS Server
         // 2.- If ticket is not found, log the error and return (caller will close the connection)
         // 3.- If ticket is found, we will receive (json):
@@ -99,7 +100,7 @@ impl UDSApiProvider for HttpUDSApiProvider {
             Ok(client) => client,
             Err(e) => {
                 log::error!("Error creating UDS client: {:?}", e);
-                return Err(std::io::Error::other(e.to_string()));
+                return Err(anyhow::Error::msg(format!("Error creating UDS client: {:?}", e)));
             }
         };
 
@@ -119,7 +120,7 @@ impl UDSApiProvider for HttpUDSApiProvider {
             Ok(response) => response,
             Err(e) => {
                 log::error!("Error requesting UDS: {:?}", e);
-                return Err(std::io::Error::other(e.to_string()));
+                return Err(anyhow::Error::msg(format!("Error requesting UDS: {:?}", e)));
             }
         };
 
@@ -130,7 +131,7 @@ impl UDSApiProvider for HttpUDSApiProvider {
             return Ok(uds_response);
         } else {
             log::error!("UDS Response status error: {:?}", response);
-            return Err(std::io::Error::other(format!("UDS Response status error: {:?}", response)));
+            return Err(anyhow::Error::msg(format!("UDS Response status error: {:?}", response)));
         }
     }
 }
