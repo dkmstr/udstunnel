@@ -65,36 +65,38 @@ pub fn provider(list_of_ciphers: &str) -> CryptoProvider {
 }
 
 #[cfg(test)]
-#[test]
-fn test_empty_cipher_list() {
-    let ciphers = "";
-    let provider = provider(ciphers);
-    assert_eq!(
-        provider.cipher_suites.len(),
-        rustls::crypto::aws_lc_rs::DEFAULT_CIPHER_SUITES.len()
-    );
-}
-
-#[test]
-fn test_invalid_cipher_list() {
-    let ciphers = "ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512";
-    let provider = provider(ciphers);
-    assert_eq!(
-        provider.cipher_suites.len(),
-        rustls::crypto::aws_lc_rs::DEFAULT_CIPHER_SUITES.len()
-    );
-}
-
-#[test]
-fn test_some_valid_cipher_list() {
-    let ciphers = "ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-CHACHA20-POLY1305-SHA256";
-    let provider = provider(ciphers);
-    assert_eq!(provider.cipher_suites.len(), 2);
-}
-
-#[test]
-fn test_valid_cipher_list() {
-    let ciphers = "TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256";
-    let provider = provider(ciphers);
-    assert_eq!(provider.cipher_suites.len(), 3);
+mod tests {
+    #[test]
+    fn test_empty_cipher_list() {
+        let ciphers = "";
+        let provider = provider(ciphers);
+        assert_eq!(
+            provider.cipher_suites.len(),
+            rustls::crypto::aws_lc_rs::DEFAULT_CIPHER_SUITES.len()
+        );
+    }
+    
+    #[test]
+    fn test_invalid_cipher_list() {
+        let ciphers = "ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512";
+        let provider = provider(ciphers);
+        assert_eq!(
+            provider.cipher_suites.len(),
+            rustls::crypto::aws_lc_rs::DEFAULT_CIPHER_SUITES.len()
+        );
+    }
+    
+    #[test]
+    fn test_some_valid_cipher_list() {
+        let ciphers = "ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-CHACHA20-POLY1305-SHA256";
+        let provider = provider(ciphers);
+        assert_eq!(provider.cipher_suites.len(), 2);
+    }
+    
+    #[test]
+    fn test_valid_cipher_list() {
+        let ciphers = "TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256";
+        let provider = provider(ciphers);
+        assert_eq!(provider.cipher_suites.len(), 3);
+    }
 }
