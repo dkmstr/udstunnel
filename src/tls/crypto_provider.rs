@@ -66,6 +66,8 @@ pub fn provider(list_of_ciphers: &str) -> CryptoProvider {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    
     #[test]
     fn test_empty_cipher_list() {
         let ciphers = "";
